@@ -9,6 +9,8 @@ Record — per episode:
     into one dataset row. Recording timing does not drive robot dispatch.
   - recorder thread: blocks on ``rec_q``, calls ``dataset.add_frame(...)`` for
     every dict, and ``dataset.save_episode()`` when it sees the SAVE sentinel
+  - LeRobot image writer: four threads per camera write PNGs asynchronously;
+    saving an episode waits for and validates the images before video encoding
   - episodes after the first begin with ``go_home()`` (reset to the recording home
     pose), rest (default 5 s) with no teleop dispatch, then sensor warmup and
     recording; episode 1 starts without homing; SPACE saves and advances; at
@@ -132,6 +134,9 @@ _DEFAULT_FPS = 30
 _DEFAULT_NUM_EPISODES = 1
 _DEFAULT_EPISODE_SECONDS = 30.0
 _DEFAULT_REST_SECONDS = 5.0
+_IMAGE_WRITER_THREADS_PER_CAMERA = 4
+# Limit pending raw images as well as rec_q: LeRobot's writer queue is unbounded.
+_IMAGE_WRITER_BACKLOG_PER_CAMERA = 64
 
 # Sentinels pushed onto rec_q between episodes — the recorder either flushes
 # (save) or drops (discard) the in-progress episode buffer, then keeps draining.
@@ -270,6 +275,73 @@ def _stub_action_publisher(
         time.sleep(period)
 
 
+def _create_recording_dataset(dataset_class, *, repo_id, fps, features, root):
+    camera_count = sum(ft['dtype'] in ('image', 'video') for ft in features.values())
+    threads = _IMAGE_WRITER_THREADS_PER_CAMERA * camera_count
+    dataset = dataset_class.create(
+        repo_id=repo_id, fps=fps, features=features, root=root, use_videos=True,
+        image_writer_processes=0, image_writer_threads=threads,
+    )
+    logger.info('Image storage: %d cameras, %d asynchronous writer threads.', camera_count, threads)
+    return dataset
+
+
+def _check_image_writer_backlog(dataset):
+    writer = getattr(dataset, 'image_writer', None)
+    if writer is None:
+        return
+    camera_count = sum(ft['dtype'] in ('image', 'video') for ft in dataset.features.values())
+    if writer.queue.qsize() >= _IMAGE_WRITER_BACKLOG_PER_CAMERA * max(camera_count, 1):
+        raise RuntimeError('이미지 저장 대기열이 계속 밀려 현재 시도를 폐기합니다. CPU·디스크 부하를 확인해 주세요.')
+
+
+def _validate_recorded_images(dataset):
+    """Catch swallowed LeRobot PNG write failures before committing episode metadata."""
+    writer = getattr(dataset, 'image_writer', None)
+    if writer is not None:
+        writer.wait_until_done()
+    image_features = {
+        key: ft for key, ft in getattr(dataset, 'features', {}).items()
+        if ft['dtype'] in ('image', 'video')
+    }
+    if not image_features:
+        return
+    from PIL import Image
+
+    buffer = dataset.episode_buffer
+    for key, ft in image_features.items():
+        paths = buffer[key]
+        if len(paths) != buffer['size']:
+            raise RuntimeError(f'{key}: 이미지 수와 데이터 프레임 수가 다릅니다.')
+        if paths and len(list(Path(paths[0]).parent.glob('frame-*.png'))) != buffer['size']:
+            raise RuntimeError(f'{key}: 이전 시도의 이미지가 남아 있거나 이미지가 누락되었습니다.')
+        for path in paths:
+            with Image.open(path) as image:
+                if image.size != (ft['shape'][1], ft['shape'][0]):
+                    raise RuntimeError(f'{key}: 저장된 이미지 해상도가 다릅니다: {path}')
+                image.verify()
+
+
+def _discard_recording_episode(dataset):
+    writer = getattr(dataset, 'image_writer', None)
+    if writer is not None:
+        writer.wait_until_done()
+    directories = []
+    for key, ft in getattr(dataset, 'features', {}).items():
+        if ft['dtype'] == 'video':
+            index = int(np.asarray(dataset.episode_buffer['episode_index']).reshape(-1)[0])
+            directory = dataset._get_image_file_dir(index, key)
+            if not directory.resolve().is_relative_to((dataset.root / 'images').resolve()):
+                raise RuntimeError(f'Unexpected temporary image directory: {directory}')
+            directories.append(directory)
+    dataset.clear_episode_buffer()
+    # LeRobot 0.4.4 clears dtype=image files, but leaves temporary dtype=video
+    # PNGs on discard. A shorter retry must not encode the previous trial's tail.
+    for directory in directories:
+        if directory.is_dir():
+            shutil.rmtree(directory)
+
+
 def _recorder_loop(
     dataset,
     rec_q: "queue.Queue",
@@ -286,14 +358,21 @@ def _recorder_loop(
             succeeded = False
             try:
                 if episode_failed:
-                    dataset.clear_episode_buffer()
+                    _discard_recording_episode(dataset)
                     logger.error('Refusing to save an episode after a frame write failure.')
                 else:
+                    _validate_recorded_images(dataset)
                     dataset.save_episode()
                     logger.info("Episode saved.")
                     succeeded = True
             except Exception:
                 logger.exception("Failed to save episode")
+                if failure_event is not None:
+                    failure_event.set()
+                try:
+                    _discard_recording_episode(dataset)
+                except Exception:
+                    logger.exception('Failed to discard the unsuccessful episode')
             finally:
                 episode_failed = False
                 episode_finalized_q.put(succeeded)
@@ -301,7 +380,7 @@ def _recorder_loop(
         if item is _DISCARD_EPISODE:
             succeeded = False
             try:
-                dataset.clear_episode_buffer()
+                _discard_recording_episode(dataset)
                 logger.warning("Episode discarded (incomplete / sensor failure).")
                 succeeded = True
             except Exception:
@@ -313,6 +392,7 @@ def _recorder_loop(
         if episode_failed:
             continue
         try:
+            _check_image_writer_backlog(dataset)
             dataset.add_frame(item)
         except Exception:
             logger.exception("Failed to add frame")
@@ -708,12 +788,12 @@ def _main_record(argv: list[str]) -> None:
         logger.info("--overwrite: removing existing dataset at %s", target_root)
         shutil.rmtree(target_root)
 
-    dataset = LeRobotDataset.create(
+    dataset = _create_recording_dataset(
+        LeRobotDataset,
         repo_id=args.repo_id,
         fps=args.fps,
         features=features,
         root=args.root,
-        use_videos=True,
     )
     logger.info("Dataset root: %s", dataset.root)
     if control:
@@ -1065,6 +1145,10 @@ def _main_record(argv: list[str]) -> None:
         teleop_thread.join(timeout=JOIN_TIMEOUT)
 
         recorder_thread.join()
+        try:
+            dataset.stop_image_writer()
+        except Exception:
+            logger.exception('Failed to stop the image writer')
         try:
             dataset.finalize()  # writes the parquet footers; unloadable without it
         except Exception:
