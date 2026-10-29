@@ -75,7 +75,7 @@ def test_preview_does_not_write_outside_control_directory(tmp_path):
     cv2 = pytest.importorskip('cv2')
     control = CollectionControl(tmp_path, threading.Event(), threading.Event())
     try:
-        rgb = np.full((10, 20, 3), (240, 0, 0), dtype=np.uint8)
+        rgb = np.full((480, 640, 3), (240, 0, 0), dtype=np.uint8)
         observation = type('Observation', (), {'images': {'bottom': rgb, '../escape': rgb}})()
         control.observe(observation)
         deadline = time.monotonic() + 2
@@ -83,6 +83,7 @@ def test_preview_does_not_write_outside_control_directory(tmp_path):
             time.sleep(0.02)
         bgr = cv2.imread(str(tmp_path / 'bottom.jpg'))
         assert bgr is not None and bgr[0, 0, 2] > 200 and bgr[0, 0, 0] < 20
+        assert bgr.shape == rgb.shape, 'The desktop preview must retain the full recording resolution.'
         assert not (tmp_path.parent / 'escape.jpg').exists()
     finally:
         control.close()

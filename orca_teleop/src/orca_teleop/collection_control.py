@@ -100,7 +100,7 @@ class CollectionControl:
                     pass
                 finally:
                     path.unlink(missing_ok=True)
-            if time.monotonic() - last_preview < 0.3:
+            if time.monotonic() - last_preview < 0.2:
                 continue
             with self._lock:
                 images = dict(self._images)
@@ -115,8 +115,11 @@ class CollectionControl:
                         continue
                     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
                     h, w = bgr.shape[:2]
-                    bgr = cv2.resize(bgr, (480, max(1, round(h * 480 / w))))
-                    ok, encoded = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                    # Retain the full 640x480 recording feed. Large desktop
+                    # panels should not enlarge an already downsampled image.
+                    if w > 1280:
+                        bgr = cv2.resize(bgr, (1280, max(1, round(h * 1280 / w))))
+                    ok, encoded = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     if ok:
                         target = self.directory / f'{name}.jpg'
                         temporary = target.with_suffix('.jpg.partial')
