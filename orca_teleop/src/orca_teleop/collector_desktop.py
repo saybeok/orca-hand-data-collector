@@ -100,7 +100,7 @@ def launch(collector):
     workspace.rowconfigure(1, weight=1)
     workspace.columnconfigure(0, weight=1)
 
-    focus = tk.StringVar(value='wrist')
+    focus = tk.StringVar(value='realsense')
     equal_views = tk.BooleanVar(value=False)
     fullscreen = tk.BooleanVar(value=False)
     toolbar = ttk.Frame(workspace)
