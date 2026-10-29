@@ -122,6 +122,21 @@ def test_settings_survive_project_relocation_without_serial_device_changes(tmp_p
         collector.save_settings(dict(settings, acceleration=float('nan')))
 
 
+@pytest.mark.parametrize('demo', [False, True])
+@pytest.mark.parametrize('task', ['Flip over the hwatu card.', 'my custom task'])
+def test_task_default_migration_preserves_custom_instructions_and_camera_roles(tmp_path, demo, task):
+    collector = Collector(tmp_path, demo=demo)
+    assert collector.settings['task'] == 'move the hwatu card.'
+    sources = {'bottom': 'usb=1-1.3', 'wrist': 'usb=1-1.4', 'realsense': 'serial=rs'}
+    collector.save_settings(dict(collector.settings, task=task, sources=sources))
+    reloaded = Collector(tmp_path, demo=demo)
+    expected = 'move the hwatu card.' if task == 'Flip over the hwatu card.' else task
+    assert reloaded.settings['task'] == expected
+    persisted = json.loads(reloaded.settings_path.read_text())
+    assert persisted['task'] == expected
+    assert persisted['sources'] == sources
+
+
 def test_frame_write_failure_discards_episode_instead_of_counting_success():
     import importlib.util
     import queue

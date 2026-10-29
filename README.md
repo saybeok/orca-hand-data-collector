@@ -104,7 +104,7 @@ USB 포트 구조는 PC마다 달라집니다. 예전 PC의 `usb=1-1.4` 같은 �
 - `observation.images.bottom`, `.wrist`, `.realsense`: RGB 영상 3개, 각 640×480. 깊이 영상은 현재 저장하지 않습니다.
 - `observation.state`: 팔 3축 + 손 17축 현재 상태, 총 20개. 손 상태는 모터 엔코더에서 환산한 추정값입니다.
 - `action`: IK·리타겟팅과 명령 제한을 거친 목표 관절값 20개.
-- `task`: 예를 들어 `Flip over the hwatu card.`라는 작업 지시.
+- `task`: 기본값은 `move the hwatu card.`라는 작업 지시입니다.
 - LeRobot이 관리하는 프레임·에피소드·시간 정보. 수집 주기는 30Hz를 목표로 합니다.
 
 관절 벡터는 모델의 공통 라디안 규칙을 사용합니다. 순서는 데이터셋 메타데이터에 기록됩니다. 원본 Quest 손 좌표나 촉각·접촉력은 현재 기록하지 않습니다.

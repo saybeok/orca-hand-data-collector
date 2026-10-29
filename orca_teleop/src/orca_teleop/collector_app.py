@@ -19,6 +19,7 @@ from orca_teleop.cameras import (
 from orca_teleop.collection_control import atomic_json, send_command
 
 CAMERAS = {'bottom': '바닥', 'wrist': '손목', 'realsense': '리얼센스'}
+DEFAULT_TASK = 'move the hwatu card.'
 PHASES = {
     'idle': '연결 전', 'preview': '카메라 확인 중', 'preparing': '연결 확인 중',
     'connecting': '텔레옵 연결 중', 'warming_up': '손 트래킹·센서 대기',
@@ -73,7 +74,7 @@ class Collector:
         self.config_dir = root / 'data' / 'collector_ui'
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.settings = {
-            'task': 'Flip over the hwatu card.', 'target': 50,
+            'task': DEFAULT_TASK, 'target': 50,
             'velocity': 15, 'acceleration': 45,
             'data_root': str(root / 'data' / ('collector_demo' if demo else 'lerobot')),
             'sources': {name: parse_camera_spec(os.environ.get(
@@ -82,6 +83,9 @@ class Collector:
         path = self.config_dir / ('demo_settings.json' if demo else 'settings.json')
         if path.exists():
             self.settings.update(json.loads(path.read_text()))
+            if self.settings['task'] == 'Flip over the hwatu card.':
+                self.settings['task'] = DEFAULT_TASK
+                atomic_json(path, self.settings)
         self.settings_path = path
         self.process = None
         self.control_dir = None

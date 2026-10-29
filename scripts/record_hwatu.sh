@@ -77,7 +77,7 @@ exec "$python_bin" orca_teleop/scripts/record_dataset.py \
   --clutch --arm-scale 0.35 \
   --arm-max-velocity-deg-s 15 --arm-max-acceleration-deg-s2 45 \
   --fps 30 --episode-end space --num-episodes 1 \
-  --task "Flip over the hwatu card." \
+  --task "move the hwatu card." \
   --repo-id "local/$session_id" --root "$dataset_root" \
   --camera "$ORCA_CAMERA_BOTTOM" \
   --camera "$ORCA_CAMERA_WRIST" \
