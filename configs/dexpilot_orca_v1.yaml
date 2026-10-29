@@ -1,0 +1,17 @@
+# Upstream dex-retargeting 0.5.0 DexPilot, explicit opt-in comparison.
+# This is the library's five-finger adaptation, not a full paper reproduction.
+optimizer:
+  type: dexpilot
+retargeting:
+  scaling_factor: 1.0
+  project_dist: 0.03
+  escape_dist: 0.05
+  low_pass_alpha: 0.1
+execution:
+  # Local output bound, separate from the unmodified upstream pinch objective.
+  # Set to 0 only to compare upstream output without this execution bound.
+  max_joint_velocity_deg_s: 60.0
+# ORCA adapter supplies URDF, 16 target joints, palm, five tip-frame origins,
+# physical ROM, local-frame alignment, and neutral filter/warm-start seed.
+# Distances are metres; no startup auto-scale or per-finger extra offsets.
+# Projection is upstream's discrete hysteresis, not a continuous pinch mapping.

@@ -1,0 +1,191 @@
+motor_type: feetech
+# MOTOR_BAUD_RATES[feetech] only lists 1M; the 3M rate of the Dynamixel v1 hand
+# is not reachable on the HLS servos.
+baudrate: 1000000
+# Stable USB-serial path: /dev/ttyACM* numbering swaps when adapters are replugged.
+port: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B79079884-if00
+# FeetechClient maps mA straight onto the 0-1000 torque limit register, so this
+# is 40% torque. Raise it if the fingers stall before reaching their ROM.
+# Wrist needs more torque than fingers to reach the rear hardstop under load.
+max_current: 700
+
+type: right
+
+# current, velocity, position, multi-turn- position, current_based_position
+# Feetech honours mode 5 by torque-limiting rather than true current control.
+control_mode: current_based_position
+
+motor_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+joint_ids: [thumb_mcp, thumb_abd, thumb_pip, thumb_dip, index_abd, index_mcp, index_pip, middle_abd, middle_mcp, middle_pip, ring_abd, ring_mcp, ring_pip, pinky_abd, pinky_mcp, pinky_pip, wrist]
+
+# Which motor ID is physically connected to which joint
+# Motor IDs from physical probe 2026-08-30 (this unit ≠ stock v1 wiring).
+# Thumb axes rechecked against model motion 2026-10-27: ID13 is the model's
+# thumb_mcp (user: CMC/root); ID16 is thumb_pip (user: MCP flexion).
+# Signs kept from prior local polarity; re-check flex/extend after recalibrate.
+joint_to_motor_map:
+  thumb_mcp: 13   # user: 엄지 CMC/root; verified against model axis
+  thumb_abd: 14
+  thumb_pip: 16   # user: 엄지 MCP flexion; verified against model axis
+  thumb_dip: 15   # user: 엄지 IP
+  index_abd: -3
+  index_mcp: 2
+  index_pip: 1
+  middle_abd: -4
+  middle_mcp: 9
+  middle_pip: 8
+  ring_abd: 12
+  ring_mcp: 10
+  ring_pip: 11
+  pinky_abd: -5
+  pinky_mcp: 7
+  pinky_pip: 6
+  wrist: 17
+
+joint_roms:
+  thumb_mcp: [-50, 50]
+  thumb_abd: [-20, 42]
+  thumb_pip: [-12, 108]
+  thumb_dip: [-20, 112]
+  index_abd: [-37, 37]
+  index_mcp: [-20, 95]
+  index_pip: [-20, 108]
+  middle_abd: [-37, 37]
+  middle_mcp: [-20, 91]
+  middle_pip: [-20, 107]
+  ring_abd: [-37, 37]
+  ring_mcp: [-20, 91]
+  ring_pip: [-20, 107]
+  pinky_abd: [-37, 37]
+  pinky_mcp: [-20, 98]
+  pinky_pip: [-20, 108]
+  # Official latest right-hand wrist ROM (was v1 bundled [-50, 30]).
+  wrist: [-65, 35]
+
+neutral_position:
+  thumb_mcp: -13
+  thumb_abd: 42
+  thumb_pip: 33
+  thumb_dip: 19
+  index_abd: 25
+  index_mcp: 0
+  index_pip: 0
+  middle_abd: -2
+  middle_mcp: 0
+  middle_pip: 0
+  ring_abd: -20
+  ring_mcp: -1
+  ring_pip: 0
+  pinky_abd: -37
+  pinky_mcp: 1
+  pinky_pip: 0
+  wrist: 0
+
+# Official latest right-hand calibration_current is 300 mA.
+calibration_current: 300
+# Wrist hardstops need more torque than fingers on this Feetech build.
+wrist_calibration_current: 600
+calibration_step_size: 0.1
+calibration_step_period: 0.001
+# A hardstop is declared after this many consecutive reads within the threshold.
+# 10 was short enough that freshly tensioned (slow) tendons tripped it mid-travel.
+calibration_num_stable: 30
+calibration_threshold: 0.01
+# This unit's thumb IP previously completed a visually confirmed 2.3807 rad
+# motor sweep. Reject a shortened sweep rather than relabel it as full ROM.
+# 1.8 rad is a local acceptance floor (~75% of that travel), not a force target
+# or an official ORCA value. Revalidate after changing tendons or mechanics.
+calibration_min_motor_span_rad:
+  thumb_dip: 1.8
+
+calibration_sequence:
+  - step: 1
+    joints:
+      thumb_mcp: flex
+  - step: 2
+    joints:
+      thumb_mcp: extend
+  - step: 3
+    joints:
+      thumb_abd: flex
+  - step: 4
+    joints:
+      thumb_abd: extend
+  - step: 5
+    joints:
+      thumb_pip: flex
+  - step: 6
+    joints:
+      thumb_pip: extend
+  - step: 7
+    joints:
+      thumb_dip: flex
+  - step: 8
+    joints:
+      thumb_dip: extend
+  - step: 9
+    joints:
+      index_abd: flex
+      middle_abd: flex
+      ring_abd: flex
+      pinky_abd: flex
+  - step: 10
+    joints:
+      index_abd: extend
+      middle_abd: extend
+      ring_abd: extend
+      pinky_abd: extend
+  - step: 11
+    joints:
+      index_mcp: flex
+  - step: 12
+    joints:
+      index_mcp: extend
+  - step: 13
+    joints:
+      index_pip: flex
+  - step: 14
+    joints:
+      index_pip: extend
+  - step: 15
+    joints:
+      middle_mcp: flex
+  - step: 16
+    joints:
+      middle_mcp: extend
+  - step: 17
+    joints:
+      middle_pip: flex
+  - step: 18
+    joints:
+      middle_pip: extend
+  - step: 19
+    joints:
+      ring_mcp: flex
+  - step: 20
+    joints:
+      ring_mcp: extend
+  - step: 21
+    joints:
+      ring_pip: flex
+  - step: 22
+    joints:
+      ring_pip: extend
+  - step: 23
+    joints:
+      pinky_mcp: flex
+  - step: 24
+    joints:
+      pinky_mcp: extend
+  - step: 25
+    joints:
+      pinky_pip: flex
+  - step: 26
+    joints:
+      pinky_pip: extend
+  - step: 27
+    joints:
+      wrist: flex
+  - step: 28
+    joints:
+      wrist: extend

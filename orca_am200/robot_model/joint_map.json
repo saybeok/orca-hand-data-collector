@@ -1,0 +1,271 @@
+{
+  "robot": "AM-ARM200 3DoF + ORCA right hand v1",
+  "total_dof": 20,
+  "arm_dof": 3,
+  "hand_dof": 17,
+  "model": "am_arm200_orca_right.xml",
+  "hand_config": "/home/lee/orca_hand/configs/orcahand-right-v1-feetech/config.yaml",
+  "hand_order_source": "orca_core hand config joint_ids, so the hardware vector needs no reordering",
+  "canonical_order": [
+    {
+      "index": 0,
+      "role": "arm.shoulder_pan",
+      "orca_core_joint_id": null,
+      "mujoco_joint": "shoulder_pan",
+      "mujoco_actuator": "act_shoulder_pan",
+      "model_actuator_index": 0,
+      "model_qpos_index": 0,
+      "range_rad": [
+        -3.14,
+        3.14
+      ]
+    },
+    {
+      "index": 1,
+      "role": "arm.shoulder_lift",
+      "orca_core_joint_id": null,
+      "mujoco_joint": "shoulder_lift",
+      "mujoco_actuator": "act_shoulder_lift",
+      "model_actuator_index": 1,
+      "model_qpos_index": 1,
+      "range_rad": [
+        -3.14,
+        3.14
+      ]
+    },
+    {
+      "index": 2,
+      "role": "arm.elbow_flex",
+      "orca_core_joint_id": null,
+      "mujoco_joint": "elbow_flex",
+      "mujoco_actuator": "act_elbow_flex",
+      "model_actuator_index": 2,
+      "model_qpos_index": 2,
+      "range_rad": [
+        -3.14,
+        3.14
+      ]
+    },
+    {
+      "index": 3,
+      "role": "hand.thumb_mcp",
+      "orca_core_joint_id": "thumb_mcp",
+      "mujoco_joint": "right_thumb_mcp",
+      "mujoco_actuator": "right_thumb_mcp_actuator",
+      "model_actuator_index": 4,
+      "model_qpos_index": 4,
+      "range_rad": [
+        -0.87266,
+        0.87266
+      ]
+    },
+    {
+      "index": 4,
+      "role": "hand.thumb_abd",
+      "orca_core_joint_id": "thumb_abd",
+      "mujoco_joint": "right_thumb_abd",
+      "mujoco_actuator": "right_thumb_abd_actuator",
+      "model_actuator_index": 5,
+      "model_qpos_index": 5,
+      "range_rad": [
+        -1.08211,
+        0.0
+      ]
+    },
+    {
+      "index": 5,
+      "role": "hand.thumb_pip",
+      "orca_core_joint_id": "thumb_pip",
+      "mujoco_joint": "right_thumb_pip",
+      "mujoco_actuator": "right_thumb_pip_actuator",
+      "model_actuator_index": 6,
+      "model_qpos_index": 6,
+      "range_rad": [
+        -0.7944,
+        1.23
+      ]
+    },
+    {
+      "index": 6,
+      "role": "hand.thumb_dip",
+      "orca_core_joint_id": "thumb_dip",
+      "mujoco_joint": "right_thumb_dip",
+      "mujoco_actuator": "right_thumb_dip_actuator",
+      "model_actuator_index": 7,
+      "model_qpos_index": 7,
+      "range_rad": [
+        -0.85384,
+        1.45
+      ]
+    },
+    {
+      "index": 7,
+      "role": "hand.index_abd",
+      "orca_core_joint_id": "index_abd",
+      "mujoco_joint": "right_index_abd",
+      "mujoco_actuator": "right_index_abd_actuator",
+      "model_actuator_index": 8,
+      "model_qpos_index": 8,
+      "range_rad": [
+        -1.04577,
+        0.24577
+      ]
+    },
+    {
+      "index": 8,
+      "role": "hand.index_mcp",
+      "orca_core_joint_id": "index_mcp",
+      "mujoco_joint": "right_index_mcp",
+      "mujoco_actuator": "right_index_mcp_actuator",
+      "model_actuator_index": 9,
+      "model_qpos_index": 9,
+      "range_rad": [
+        -0.34907,
+        1.65806
+      ]
+    },
+    {
+      "index": 9,
+      "role": "hand.index_pip",
+      "orca_core_joint_id": "index_pip",
+      "mujoco_joint": "right_index_pip",
+      "mujoco_actuator": "right_index_pip_actuator",
+      "model_actuator_index": 10,
+      "model_qpos_index": 10,
+      "range_rad": [
+        -0.34907,
+        1.88496
+      ]
+    },
+    {
+      "index": 10,
+      "role": "hand.middle_abd",
+      "orca_core_joint_id": "middle_abd",
+      "mujoco_joint": "right_middle_abd",
+      "mujoco_actuator": "right_middle_abd_actuator",
+      "model_actuator_index": 11,
+      "model_qpos_index": 11,
+      "range_rad": [
+        -0.64577,
+        0.64577
+      ]
+    },
+    {
+      "index": 11,
+      "role": "hand.middle_mcp",
+      "orca_core_joint_id": "middle_mcp",
+      "mujoco_joint": "right_middle_mcp",
+      "mujoco_actuator": "right_middle_mcp_actuator",
+      "model_actuator_index": 12,
+      "model_qpos_index": 12,
+      "range_rad": [
+        -0.34907,
+        1.58825
+      ]
+    },
+    {
+      "index": 12,
+      "role": "hand.middle_pip",
+      "orca_core_joint_id": "middle_pip",
+      "mujoco_joint": "right_middle_pip",
+      "mujoco_actuator": "right_middle_pip_actuator",
+      "model_actuator_index": 13,
+      "model_qpos_index": 13,
+      "range_rad": [
+        -0.34907,
+        1.8675
+      ]
+    },
+    {
+      "index": 13,
+      "role": "hand.ring_abd",
+      "orca_core_joint_id": "ring_abd",
+      "mujoco_joint": "right_ring_abd",
+      "mujoco_actuator": "right_ring_abd_actuator",
+      "model_actuator_index": 14,
+      "model_qpos_index": 14,
+      "range_rad": [
+        -0.47577,
+        0.80577
+      ]
+    },
+    {
+      "index": 14,
+      "role": "hand.ring_mcp",
+      "orca_core_joint_id": "ring_mcp",
+      "mujoco_joint": "right_ring_mcp",
+      "mujoco_actuator": "right_ring_mcp_actuator",
+      "model_actuator_index": 15,
+      "model_qpos_index": 15,
+      "range_rad": [
+        -0.34907,
+        1.58825
+      ]
+    },
+    {
+      "index": 15,
+      "role": "hand.ring_pip",
+      "orca_core_joint_id": "ring_pip",
+      "mujoco_joint": "right_ring_pip",
+      "mujoco_actuator": "right_ring_pip_actuator",
+      "model_actuator_index": 16,
+      "model_qpos_index": 16,
+      "range_rad": [
+        -0.34907,
+        1.8675
+      ]
+    },
+    {
+      "index": 16,
+      "role": "hand.pinky_abd",
+      "orca_core_joint_id": "pinky_abd",
+      "mujoco_joint": "right_pinky_abd",
+      "mujoco_actuator": "right_pinky_abd_actuator",
+      "model_actuator_index": 17,
+      "model_qpos_index": 17,
+      "range_rad": [
+        -0.12244,
+        1.1691
+      ]
+    },
+    {
+      "index": 17,
+      "role": "hand.pinky_mcp",
+      "orca_core_joint_id": "pinky_mcp",
+      "mujoco_joint": "right_pinky_mcp",
+      "mujoco_actuator": "right_pinky_mcp_actuator",
+      "model_actuator_index": 18,
+      "model_qpos_index": 18,
+      "range_rad": [
+        -0.34907,
+        1.71042
+      ]
+    },
+    {
+      "index": 18,
+      "role": "hand.pinky_pip",
+      "orca_core_joint_id": "pinky_pip",
+      "mujoco_joint": "right_pinky_pip",
+      "mujoco_actuator": "right_pinky_pip_actuator",
+      "model_actuator_index": 19,
+      "model_qpos_index": 19,
+      "range_rad": [
+        -0.34907,
+        1.88496
+      ]
+    },
+    {
+      "index": 19,
+      "role": "hand.wrist",
+      "orca_core_joint_id": "wrist",
+      "mujoco_joint": "right_wrist",
+      "mujoco_actuator": "right_wrist_actuator",
+      "model_actuator_index": 3,
+      "model_qpos_index": 3,
+      "range_rad": [
+        -0.6736,
+        0.8972
+      ]
+    }
+  ]
+}

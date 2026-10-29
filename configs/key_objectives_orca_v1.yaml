@@ -1,0 +1,26 @@
+# Xin et al., DOI 10.1109/RAP.2026.3656110. Independent hand-only ORCA adaptation.
+# SI metres/radians throughout the objective. Not a full arm-hand reproduction.
+optimizer:
+  type: key_objectives
+execution:
+  # Local execution constraint, NOT a claim about the paper's objective.
+  # 0 disables it for offline ablations. Applies to opening and closing.
+  max_joint_velocity_deg_s: 60.0
+retarget:
+  pinch_inner_m: 0.01
+  pinch_outer_m: 0.10
+  switch_slope_per_m: 10.0
+  w_shape: 1.0
+  w_direction: 10.0
+  w_pinch: 10.0
+  w_temporal: 0.01
+  # Local ORCA/SI-unit priors, NOT the paper's LEAP joint-index weights.
+  # Reference pose is this hand's configured neutral, not all-zero joints.
+  joint_prior_weights:
+    index_abd: 0.00005
+    middle_abd: 0.00005
+    ring_abd: 0.00005
+    pinky_abd: 0.00005
+  calibration_frames: 30
+  maxeval: 100
+  ftol_abs: 1.0e-9

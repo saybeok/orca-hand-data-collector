@@ -1,0 +1,485 @@
+# ==============================================================================
+# Copyright (c) 2025 ORCA
+#
+# This file is part of ORCA and is licensed under the MIT License.
+# You may use, copy, modify, and distribute this file under the terms of the MIT License.
+# See the LICENSE file at the root of this repository for full license information.
+# ==============================================================================
+
+import dataclasses
+import math
+import os
+from dataclasses import dataclass, field
+from typing import Dict, List, Literal
+
+from .constants import (
+    CONTROL_MODES,
+    DEFAULT_MODEL_NAME,
+    FINGER_NAMES,
+    JOINT_IDS,
+    JOINT_ROM_DICT,
+    JOINT_TO_MOTOR_MAP,
+    MOTOR_IDS,
+    SUPPORTED_MOTOR_TYPES,
+)
+from .hardware.sensing.constants import (
+    VALID_SENSOR_IDS,
+    DEFAULT_ENCODER_BAUDRATE,
+    DEFAULT_SENSOR_PORT,
+    DEFAULT_FINGER_TO_SENSOR_ID,
+)
+from .joint_position import OrcaJointPositions
+from .utils.utils import get_model_path, read_yaml
+
+
+class HandConfigValidationError(ValueError):
+    """Raised when a hand configuration is structurally invalid."""
+
+
+def _resolve_model_name_from_type(hand_type: str | None) -> str:
+    """Resolve a packaged model directory name from a hand type string."""
+    if hand_type is None:
+        return DEFAULT_MODEL_NAME
+
+    normalized_type = hand_type.strip().lower()
+    if not normalized_type:
+        return DEFAULT_MODEL_NAME
+    if normalized_type not in {"left", "right"}:
+        raise ValueError(f"Unsupported hand type: {hand_type!r}. Expected 'left' or 'right'.")
+
+    return f"orcahand-{normalized_type}"
+
+
+def _resolve_config_path(
+    config_path: str | None,
+    model_version: str | None = None,
+    model_name: str | None = None,
+) -> str:
+    """Resolve the canonical ``config.yaml`` path."""
+    if config_path is None:
+        resolved = os.path.join(
+            get_model_path(model_version=model_version, model_name=model_name),
+            "config.yaml",
+        )
+    elif os.path.basename(config_path) != "config.yaml":
+        raise ValueError("config_path must point to a config.yaml file.")
+    else:
+        resolved = os.path.abspath(config_path)
+
+    if not os.path.exists(resolved):
+        raise FileNotFoundError(f"config.yaml not found: {resolved}")
+
+    return resolved
+
+
+def _resolve_calibration_path(config_path: str, calibration_path: str | None) -> str:
+    """Resolve the companion ``calibration.yaml`` path for a config file."""
+    if calibration_path is not None:
+        return os.path.abspath(calibration_path)
+    return os.path.join(os.path.dirname(config_path), "calibration.yaml")
+
+
+def canonical_joint_ids(
+    version: str | None = None,
+    type: str | None = None,
+) -> tuple[str, ...]:
+    """Return the canonical joint ordering for a packaged ORCA hand model."""
+    config = BaseHandConfig.from_config_path(
+        model_version=version,
+        model_name=_resolve_model_name_from_type(type),
+    )
+
+    return tuple(config.joint_ids)
+
+
+def _canonical_joint_to_motor_map(
+    raw_joint_to_motor_map: Dict[str, int],
+) -> tuple[Dict[str, int], Dict[str, bool]]:
+    """Normalize signed YAML motor mappings into absolute IDs plus inversion flags."""
+    normalized_map: Dict[str, int] = {}
+    inversion_dict: Dict[str, bool] = {}
+    for joint, motor_id in raw_joint_to_motor_map.items():
+        motor_id = int(motor_id)
+        inversion_dict[joint] = motor_id < 0
+        normalized_map[joint] = abs(motor_id)
+    return normalized_map, inversion_dict
+
+
+@dataclass(frozen=True)
+class BaseHandConfig:
+    """Base joint-space configuration for a hand model."""
+
+    config_path: str
+    type: Literal["left", "right"] | None = None
+    joint_ids: List[str] = field(default_factory=list)
+    joint_roms_dict: Dict[str, List[float]] = field(default_factory=dict)
+    neutral_position: Dict[str, float] = field(default_factory=dict)
+
+    @property
+    def model_path(self) -> str:
+        """Directory containing the hand assets described by ``config_path``."""
+        return os.path.dirname(self.config_path)
+
+    @classmethod
+    def from_config_path(
+        cls,
+        config_path: str | None = None,
+        model_version: str | None = None,
+        model_name: str | None = None,
+    ) -> "BaseHandConfig":
+        """Load shared hand metadata from ``config.yaml``."""
+        resolved_config_path = _resolve_config_path(
+            config_path,
+            model_version=model_version,
+            model_name=model_name,
+        )
+        config = read_yaml(resolved_config_path) or {}
+
+        kwargs = {"config_path": resolved_config_path}
+        if "type" in config:
+            kwargs["type"] = config["type"]
+        if JOINT_IDS in config:
+            kwargs["joint_ids"] = list(config[JOINT_IDS])
+        if JOINT_ROM_DICT in config:
+            kwargs["joint_roms_dict"] = dict(config[JOINT_ROM_DICT])
+        if "neutral_position" in config:
+            kwargs["neutral_position"] = dict(config["neutral_position"])
+
+        return cls(**kwargs)
+
+    def validate(self) -> None:
+        """Validate shared joint-space configuration."""
+        if not self.joint_ids:
+            raise HandConfigValidationError("At least one joint must be configured.")
+
+        for joint in self.joint_ids:
+            if joint not in self.joint_roms_dict:
+                raise HandConfigValidationError(f"ROM for joint {joint} is not defined.")
+
+        for joint, rom in self.joint_roms_dict.items():
+            if joint not in self.joint_ids:
+                raise HandConfigValidationError(f"Joint {joint} in ROMs is not defined.")
+            if len(rom) != 2 or rom[1] - rom[0] <= 0:
+                raise HandConfigValidationError(f"ROM {rom} for joint {joint} is not valid.")
+
+        for joint in self.neutral_position:
+            if joint not in self.joint_ids:
+                raise HandConfigValidationError(
+                    f"Neutral position entry for joint {joint} is not defined."
+                )
+
+    def clamp_joint_positions(
+        self,
+        joint_pos: OrcaJointPositions,
+    ) -> OrcaJointPositions:
+        """Clamp joint positions to the configured ROM bounds."""
+        if not isinstance(joint_pos, OrcaJointPositions):
+            raise HandConfigValidationError(
+                "joint_pos must be an OrcaJointPositions instance."
+            )
+
+        normalized = {}
+        for joint, pos in joint_pos:
+            if joint not in self.joint_ids:
+                raise HandConfigValidationError(
+                    f"Joint {joint} is not defined among the hand's joint IDs: {self.joint_ids}"
+                )
+            normalized[joint] = self._clamp_joint_value(joint, pos)
+
+        return OrcaJointPositions.from_dict(normalized)
+
+    def _clamp_joint_value(self, joint_name: str, joint_pos: float) -> float:
+        min_pos, max_pos = self.joint_roms_dict[joint_name]
+        return max(min_pos, min(max_pos, float(joint_pos)))
+
+
+@dataclass(frozen=True)
+class OrcaHandConfig(BaseHandConfig):
+    """ORCA hand configuration layered on top of the shared base spec."""
+
+    calibration_path: str = ""
+    # None = auto-detect at connect time (probed and persisted to config.yaml).
+    baudrate: int | None = None
+    port: str = "auto"
+    max_current: int = 300  # mA
+    control_mode: str = "current_based_position"
+    motor_type: str | None = None
+    motor_ids: List[int] = field(default_factory=list)
+    joint_to_motor_map: Dict[str, int] = field(default_factory=dict)
+    joint_inversion_dict: Dict[str, bool] = field(default_factory=dict)
+    calibration_current: int = 200  # mA
+    wrist_calibration_current: int = 100  # mA
+    calibration_step_size: float = 0.1  # rad
+    calibration_step_period: float = 0.01  # s
+    calibration_threshold: float = 0.01  # rad
+    calibration_num_stable: int = 20
+    # Optional per-joint lower bounds on MOTOR travel, in radians. These are
+    # acceptance checks from measured hardware, not commands to force travel.
+    calibration_min_motor_span_rad: Dict[str, float] = field(default_factory=dict)
+    calibration_sequence: List[dict] = field(default_factory=list)
+    use_joint_feedback: bool | None = None
+    joint_encoder_joints: List[str] | None = None
+    encoder_serial_port: str = "auto"
+    encoder_baudrate: int = DEFAULT_ENCODER_BAUDRATE
+
+    @property
+    def motor_id_to_idx_dict(self) -> Dict[int, int]:
+        """Map motor ID to its index in ``motor_ids``."""
+        return {motor_id: idx for idx, motor_id in enumerate(self.motor_ids)}
+
+    @property
+    def motor_to_joint_dict(self) -> Dict[int, str]:
+        """Map motor ID to joint name."""
+        return {motor_id: joint for joint, motor_id in self.joint_to_motor_map.items()}
+
+    @property
+    def has_joint_encoders(self) -> bool:
+        """Whether this hand declares any joint-encoder hardware."""
+        return bool(self.joint_encoder_joints)
+
+    @property
+    def joint_feedback_enabled(self) -> bool:
+        """Whether the closed-loop joint-feedback controller should engage.
+
+        ``use_joint_feedback`` is tri-state: ``None`` (unset) defers to the
+        presence of encoder hardware, so a hand that declares
+        ``joint_encoder_joints`` runs closed-loop by default. An explicit
+        ``False`` forces plain motor-only control even when encoders exist.
+        """
+        if self.use_joint_feedback is None:
+            return self.has_joint_encoders
+        return self.use_joint_feedback
+
+    @classmethod
+    def from_config_path(
+        cls,
+        config_path: str | None = None,
+        calibration_path: str | None = None,
+        model_version: str | None = None,
+        model_name: str | None = None,
+    ) -> "OrcaHandConfig":
+        """Load hardware-backed ORCA hand configuration from canonical YAML keys."""
+        resolved_config_path = _resolve_config_path(
+            config_path,
+            model_version=model_version,
+            model_name=model_name,
+        )
+        resolved_calibration_path = _resolve_calibration_path(
+            resolved_config_path, calibration_path
+        )
+
+        config = read_yaml(resolved_config_path) or {}
+        if not config:
+            raise HandConfigValidationError(
+                f"config.yaml at {resolved_config_path} is empty. Restore it "
+                "from the bundled model or your hand's backup."
+            )
+
+        kwargs = {"config_path": resolved_config_path, "calibration_path": resolved_calibration_path}
+
+        if "type" in config:
+            kwargs["type"] = config["type"]
+        if JOINT_IDS in config:
+            kwargs["joint_ids"] = list(config[JOINT_IDS])
+        if JOINT_ROM_DICT in config:
+            kwargs["joint_roms_dict"] = dict(config[JOINT_ROM_DICT])
+        if "neutral_position" in config:
+            kwargs["neutral_position"] = dict(config["neutral_position"])
+        if "baudrate" in config:
+            kwargs["baudrate"] = int(config["baudrate"])
+        if "port" in config:
+            kwargs["port"] = config["port"]
+        if "max_current" in config:
+            kwargs["max_current"] = int(config["max_current"])
+        if "control_mode" in config:
+            kwargs["control_mode"] = config["control_mode"]
+        if "motor_type" in config:
+            kwargs["motor_type"] = config["motor_type"]
+        if MOTOR_IDS in config:
+            kwargs["motor_ids"] = [int(motor_id) for motor_id in config[MOTOR_IDS]]
+        if JOINT_TO_MOTOR_MAP in config:
+            joint_to_motor_map, joint_inversion_dict = _canonical_joint_to_motor_map(
+                dict(config[JOINT_TO_MOTOR_MAP])
+            )
+            kwargs["joint_to_motor_map"] = joint_to_motor_map
+            kwargs["joint_inversion_dict"] = joint_inversion_dict
+        if "calibration_current" in config:
+            kwargs["calibration_current"] = int(config["calibration_current"])
+        if "wrist_calibration_current" in config:
+            kwargs["wrist_calibration_current"] = int(
+                config["wrist_calibration_current"]
+            )
+        if "calibration_step_size" in config:
+            kwargs["calibration_step_size"] = float(config["calibration_step_size"])
+        if "calibration_step_period" in config:
+            kwargs["calibration_step_period"] = float(config["calibration_step_period"])
+        if "calibration_threshold" in config:
+            kwargs["calibration_threshold"] = float(config["calibration_threshold"])
+        if "calibration_num_stable" in config:
+            kwargs["calibration_num_stable"] = int(config["calibration_num_stable"])
+        if "calibration_min_motor_span_rad" in config:
+            raw_spans = config["calibration_min_motor_span_rad"]
+            if not isinstance(raw_spans, dict):
+                raise HandConfigValidationError("calibration_min_motor_span_rad must be a joint mapping.")
+            try:
+                kwargs["calibration_min_motor_span_rad"] = {
+                    str(joint): float(span) for joint, span in raw_spans.items()
+                }
+            except (TypeError, ValueError) as exc:
+                raise HandConfigValidationError("calibration_min_motor_span_rad values must be positive finite radians.") from exc
+        if "calibration_sequence" in config:
+            kwargs["calibration_sequence"] = list(config["calibration_sequence"])
+        if "use_joint_feedback" in config:
+            raw_ujf = config["use_joint_feedback"]
+            kwargs["use_joint_feedback"] = None if raw_ujf is None else bool(raw_ujf)
+        if "joint_encoder_joints" in config:
+            raw = config["joint_encoder_joints"]
+            kwargs["joint_encoder_joints"] = (
+                None if raw is None else [str(j) for j in raw]
+            )
+        if "encoder_serial_port" in config:
+            kwargs["encoder_serial_port"] = str(config["encoder_serial_port"])
+        if "encoder_baudrate" in config:
+            kwargs["encoder_baudrate"] = int(config["encoder_baudrate"])
+
+        return cls(**kwargs)
+
+    def validate_config(self) -> None:
+        """Validate the ORCA hand configuration."""
+        super().validate()
+
+        if len(self.motor_ids) != len(self.joint_ids):
+            raise HandConfigValidationError(
+                "Number of motor IDs and joints do not match."
+            )
+
+        if len(self.motor_ids) != len(self.joint_to_motor_map):
+            raise HandConfigValidationError(
+                "Number of motor IDs and joint-to-motor mappings do not match."
+            )
+
+        if self.control_mode not in CONTROL_MODES:
+            raise HandConfigValidationError("Invalid control mode.")
+
+        if self.motor_type is not None and self.motor_type not in SUPPORTED_MOTOR_TYPES:
+            raise HandConfigValidationError(
+                f"Unknown motor_type: {self.motor_type!r}. "
+                f"Expected one of {SUPPORTED_MOTOR_TYPES} or omit for auto-detection."
+            )
+
+        if self.max_current < self.calibration_current:
+            raise HandConfigValidationError(
+                "Max current should be greater than the calibration current."
+            )
+
+        for joint, motor_id in self.joint_to_motor_map.items():
+            if joint not in self.joint_ids:
+                raise HandConfigValidationError(f"Joint {joint} is not defined.")
+            if motor_id not in self.motor_ids:
+                raise HandConfigValidationError(
+                    f"Motor ID {motor_id} is not in the motor IDs list."
+                )
+
+        for joint, span in self.calibration_min_motor_span_rad.items():
+            if joint not in self.joint_ids or not math.isfinite(span) or span <= 0:
+                raise HandConfigValidationError(
+                    "calibration_min_motor_span_rad requires configured joints and positive finite radians."
+                )
+
+        for step in self.calibration_sequence:
+            joints = step.get("joints")
+            if not isinstance(joints, dict):
+                raise HandConfigValidationError(
+                    "Each calibration step must contain a 'joints' mapping."
+                )
+            for joint, direction in joints.items():
+                if joint not in self.joint_ids:
+                    raise HandConfigValidationError(f"Joint {joint} is not defined.")
+                if direction not in ["flex", "extend"]:
+                    raise HandConfigValidationError(
+                        f"Invalid direction for joint {joint}."
+                    )
+
+        if self.use_joint_feedback is True and not self.has_joint_encoders:
+            raise HandConfigValidationError(
+                "use_joint_feedback: true requires joint_encoder_joints to be set."
+            )
+
+        if self.joint_encoder_joints is not None:
+            from .hardware.sensing.constants import (
+                ENCODER_JOINTS_ALL,
+                JOINT_TO_ENCODER_SLOT,
+            )
+            for joint in self.joint_encoder_joints:
+                if str(joint).lower() == ENCODER_JOINTS_ALL:
+                    continue
+                if joint == "wrist" or joint not in JOINT_TO_ENCODER_SLOT:
+                    raise HandConfigValidationError(
+                        f"joint_encoder_joints contains {joint!r}, which has no encoder slot."
+                    )
+
+    def __post_init__(self) -> None:
+        self.validate_config()
+
+
+@dataclass(frozen=True)
+class OrcaHandTouchConfig(OrcaHandConfig):
+    """ORCA hand configuration with tactile sensor support."""
+
+    sensor_port: str = DEFAULT_SENSOR_PORT
+    sensor_baudrate: "int | str" = "auto"
+    """``"auto"`` detects the baud from the connected sensor. Set an int in
+    ``sensors.baudrate`` only to force a specific rate."""
+    finger_to_sensor_id: Dict[str, int] = field(
+        default_factory=lambda: dict(DEFAULT_FINGER_TO_SENSOR_ID)
+    )
+
+    @classmethod
+    def from_config_path(
+        cls,
+        config_path: str | None = None,
+        calibration_path: str | None = None,
+        model_version: str | None = None,
+        model_name: str | None = None,
+    ) -> "OrcaHandTouchConfig":
+        base = OrcaHandConfig.from_config_path(
+            config_path=config_path,
+            calibration_path=calibration_path,
+            model_version=model_version,
+            model_name=model_name,
+        )
+
+        config = read_yaml(base.config_path) or {}
+        sensors = config.get("sensors", {})
+
+        sensor_kwargs = {}
+        if "port" in sensors:
+            sensor_kwargs["sensor_port"] = sensors["port"]
+        if "baudrate" in sensors:
+            raw_baud = sensors["baudrate"]
+            sensor_kwargs["sensor_baudrate"] = (
+                raw_baud if raw_baud == "auto" else int(raw_baud)
+            )
+        if "finger_to_sensor_id" in sensors:
+            sensor_kwargs["finger_to_sensor_id"] = dict(sensors["finger_to_sensor_id"])
+
+        return cls(**{f.name: getattr(base, f.name) for f in dataclasses.fields(base)}, **sensor_kwargs)
+
+    def validate_config(self) -> None:
+        super().validate_config()
+
+        if set(self.finger_to_sensor_id.keys()) != set(FINGER_NAMES):
+            raise HandConfigValidationError(
+                f"finger_to_sensor_id must contain exactly {FINGER_NAMES}, "
+                f"got {sorted(self.finger_to_sensor_id.keys())}"
+            )
+
+        ids = set(self.finger_to_sensor_id.values())
+        if ids != VALID_SENSOR_IDS:
+            raise HandConfigValidationError(
+                f"finger_to_sensor_id values must be 0-4 with no duplicates, "
+                f"got {sorted(self.finger_to_sensor_id.values())}"
+            )
+
+
+HandConfig = BaseHandConfig

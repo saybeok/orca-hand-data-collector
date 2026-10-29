@@ -1,0 +1,29 @@
+# Machine-specific environments and caches
+.venv/
+**/.git.upstream/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.uv/
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log
+.env
+.env.*
+
+# Demonstrations, GUI settings/logs, exports and diagnostics stay local.
+/data/*
+!/data/contact_calibration/
+/data/contact_calibration/*
+!/data/contact_calibration/full_hand_contacts.json
+!/data/contact_calibration/full_hand_surface.json
+!/data/contact_calibration/full_hand_taught.json
+/media/
+/research/
+/tmp/
+orca_am200/renders/

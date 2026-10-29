@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="am_arm200_orca_right_v1">
+  <!--
+    AM-ARM200 (3 DoF) + ORCA right hand v1. Canonical combined embodiment.
+
+    Arm
+      Bodies, inertials, joint axes and link origins are copied verbatim from
+      handoff/scene_v4_original.xml, which in turn matches
+      handoff/am-arm200_original.urdf. The three retained follower joints are
+      STS3095; wrist_flex / wrist_yaw / wrist_roll / gripper are removed and the
+      ORCA flange sits at the former wrist_flex anchor.
+
+    Hand
+      Attached from orcahand_right_v1.xml, a verbatim copy of orca_sim's
+      models/v1/right.mjcf. The handoff scene instead carried the *v2* hand
+      export, which does not match the physical v1 Feetech hand and whose joint
+      names orca_teleop cannot map (see ../DEVIATIONS.md).
+
+    Joint order
+      qpos/ctrl are [shoulder_pan, shoulder_lift, elbow_flex] followed by the 17
+      hand joints. joint_map.json is the source of truth; validate_model.py
+      asserts the model still agrees with it.
+
+    UNVERIFIED VALUES - do not treat as an identified model
+      - Arm joint ranges are +/-3.14 placeholders. The source URDF ships
+        lower=-3.14 upper=3.14 with effort=0 velocity=0 for every joint, so no
+        real limit is available yet.
+      - Arm actuator kp/forcerange are simulation starting values.
+      - Only the J4 capsule proxy gives the arm collision geometry; the three
+        upper arm links remain visual-only because no collision meshes exist.
+  -->
+  <compiler angle="radian" eulerseq="XYZ" autolimits="true" inertiafromgeom="false" />
+  <!-- Elliptic friction cones with impratio 10: with the default pyramidal cone
+       and impratio 1, soft-contact creep lets a fingertip pinch slide off a held
+       object within 0.5-4 s; with these settings the scripted pinch holds. -->
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic" impratio="10" />
+  <visual>
+    <global azimuth="135" elevation="-20" offwidth="1280" offheight="960" />
+    <headlight ambient="0.35 0.35 0.35" diffuse="0.8 0.8 0.8" specular="0.2 0.2 0.2" />
+  </visual>
+
+  <default>
+    <default class="am_sts3095_joint">
+      <joint type="hinge" damping="0.25" armature="0.015" limited="true" />
+      <position kp="70" ctrllimited="true" forcelimited="true" />
+    </default>
+    <default class="am_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2" rgba="0.72 0.74 0.78 1" />
+    </default>
+    <default class="am_j4_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2" rgba="0.58 0.62 0.68 1" />
+    </default>
+    <default class="am_collision">
+      <geom contype="1" conaffinity="1" condim="3" group="3" rgba="0.2 0.5 0.9 0.25" />
+    </default>
+  </default>
+
+  <asset>
+    <!-- Official AM meshes are already in meters. -->
+    <mesh name="mesh_left_base" file="assets/am/left_Base.STL" />
+    <mesh name="mesh_left_rotation_pitch" file="assets/am/left_Rotation_Pitch.STL" />
+    <mesh name="mesh_left_upper_arm" file="assets/am/left_Upper_Arm.STL" />
+    <!-- User J4 direct-ORCA replacement is mm-based. -->
+    <mesh name="mesh_j4_orca_direct"
+          file="assets/am/OB_F_J4_Elbow_ORCA_direct_M6_v12_50mm_VERTICAL_SMOOTH.stl"
+          scale="0.001 0.001 0.001" />
+    <mesh name="mesh_wrist_cam_mount" file="assets/am/CameraMount.stl" scale="0.001 0.001 0.001" />
+    <model name="orcahand_right" file="orcahand_right_v1.xml" />
+  </asset>
+
+  <worldbody>
+    <light name="key" pos="0.8 -0.8 1.2" dir="-0.6 0.6 -1" />
+    <camera name="overview" pos="0.65 -0.65 0.48" xyaxes="0.707 0.707 0 -0.35 0.35 0.87" />
+    <geom name="floor" type="plane" pos="0 0 -0.002" size="1 1 0.02" rgba="0.90 0.90 0.90 1" />
+
+    <body name="left_Base">
+      <inertial pos="-0.000275843336106138 0.0314658115512664 0.0335723553552918" mass="0.319875297446951" fullinertia="0.000655680588674779 0.000637405457098528 0.000654162826198135 1.39197235363923e-06 3.03451008391456e-06 -0.000155474232488548" />
+      <geom class="am_visual" name="vis_left_base" mesh="mesh_left_base" />
+      <body name="left_Rotation_Pitch" pos="0 0 0.039671">
+        <joint class="am_sts3095_joint" name="shoulder_pan" axis="0 0 -1" range="-3.14 3.14" />
+        <inertial pos="-0.000892708218042932 -0.0415757409297951 0.0409346003929002" mass="0.170357879655966" fullinertia="0.000317987257095386 0.000241773777957321 0.000128237985282968 7.78602088609467e-07 -5.56524855254493e-06 6.57456640185558e-06" />
+        <geom class="am_visual" name="vis_left_rotation_pitch" mesh="mesh_left_rotation_pitch" />
+        <body name="left_Upper_Arm" pos="0 -0.057994 0.10856" euler="0 1.5708 0">
+          <joint class="am_sts3095_joint" name="shoulder_lift" axis="0 0 -1" range="-3.14 3.14" />
+          <inertial pos="-0.00498717382802011 0.0711768758039328 2.8269043966363e-05" mass="0.263860498133606" fullinertia="0.000668147021127385 0.000223330767975736 0.000501587778431765 4.03237934739254e-06 -2.09697778252197e-07 -1.26104445731441e-06" />
+          <geom class="am_visual" name="vis_left_upper_arm" mesh="mesh_left_upper_arm" />
+          <body name="left_J4_ORCA" pos="-0.041124 0.12849 0">
+            <joint class="am_sts3095_joint" name="elbow_flex" axis="0 0 -1" range="-3.14 3.14" />
+            <!-- Original lower-arm inertial retained as a first simulation approximation. -->
+            <inertial pos="0.00407284254875812 -0.0804991124148977 -0.00296436542896175" mass="0.270063821451467" fullinertia="0.000836240505620331 0.000207982015074428 0.000676983508443096 7.56438032673777e-06 1.34563561753471e-07 -3.81627063187763e-06" />
+            <!--
+              R = [[0,0,1],[0,-1,0],[1,0,0]]
+              MuJoCo quat (w x y z) = 0 0.70710678 0 0.70710678
+            -->
+            <geom class="am_j4_visual" name="vis_j4_orca_direct" mesh="mesh_j4_orca_direct" pos="-0.178823503 0.012370334 -0.113091467" quat="0 0.7071067811865476 0 0.7071067811865476" />
+            <!-- The handoff shipped this proxy with contype/conaffinity=0, so it collided
+                 with nothing. It is the only collision geometry the arm has. -->
+            <geom class="am_collision" name="col_j4_proxy" type="capsule" fromto="0 -0.005 0  0.0031575 -0.185 0" size="0.025" />
+
+            <!-- Mechanical reference: center of the 70 mm direct-ORCA flange, at the
+                 anchor of the removed wrist_flex joint. Flange normal is local -Y. -->
+            <body name="orca_flange" pos="0.0031575 -0.19841 0" quat="0.5 0.5 -0.5 0.5">
+              <site name="orca_flange_center" type="sphere" size="0.005" rgba="1 0.35 0 1" />
+              <site name="orca_flange_normal" type="cylinder" pos="0 -0.025 0" size="0.0025 0.025" quat="0.70710678 0.70710678 0 0" rgba="1 0.55 0 0.75" />
+              <site name="orca_frame_x" type="cylinder" pos="0.025 0 0" size="0.0015 0.025" quat="0.70710678 0 0.70710678 0" rgba="1 0 0 0.65" />
+              <site name="orca_frame_y" type="cylinder" pos="0 0.025 0" size="0.0015 0.025" quat="0.70710678 -0.70710678 0 0" rgba="0 1 0 0.65" />
+              <site name="orca_frame_z" type="cylinder" pos="0 0 0.025" size="0.0015 0.025" rgba="0 0 1 0.65" />
+
+              <!-- Wrist camera mount (assets/am/CameraMount.stl, mm). Its 4 mm plate is
+                   clamped between the flange and the hand tower by the two M6 bolts at
+                   flange (x=-3, y=+-25) mm; the arm reaches 90 mm toward the palm side
+                   (flange -y). This matches the camera mount of the official ORCA v1
+                   "extended" model (orcahand_description v1/.../right_visual_tower_camera.stl),
+                   whose bracket coincides with this mesh and which carries the camera
+                   board with its lens facing the bracket top normal (0, -0.1726, 0.985):
+                   along the hand, tilted 10 deg away from the palm. The case box and
+                   lens position are taken from that model. Mass estimated.
+                   Collision: boxes around the bracket and the camera case; the plate
+                   and arm root sit under the tower. UNVERIFIED: fovy (depends on the
+                   physical camera/lens). -->
+              <body name="wrist_cam_mount" pos="-0.003 0 0">
+                <inertial pos="0 -0.06 0.03" mass="0.06" diaginertia="3e-5 1e-5 3e-5" />
+                <geom class="am_j4_visual" name="vis_wrist_cam_mount" mesh="mesh_wrist_cam_mount" rgba="0.25 0.25 0.28 1" />
+                <geom name="vis_wrist_cam_body" type="box" pos="-0.00175 -0.07481 0.04369" euler="0.1735 0 0" size="0.02725 0.01785 0.01205"
+                      contype="0" conaffinity="0" group="2" rgba="0.1 0.1 0.1 1" />
+                <geom class="am_collision" name="col_wrist_cam_bracket" type="box" pos="0 -0.0726 0.0170" size="0.0085 0.0176 0.0170" />
+                <geom class="am_collision" name="col_wrist_cam_body" type="box" pos="-0.00175 -0.07481 0.04369" euler="0.1735 0 0" size="0.02725 0.01785 0.01205" />
+                <camera name="wrist_cam" pos="-0.007 -0.07669 0.05641" xyaxes="-1 0 0 0 0.985 0.1726" fovy="60" />
+              </body>
+
+              <!-- Solved by scripts/derive_mount.py, which lands the v1 tower's mounting
+                   face exactly on the flange origin, sends the hand along flange +z, and
+                   rolls 180 deg about that axis so the palm faces world-down at the arm's
+                   rest pose. The x offset is the tower's half width. z is raised 4 mm by
+                   the wrist camera mount plate sandwiched under the tower. -->
+              <body name="orca_mount" pos="0.0783650538 0 0.003880890879" quat="0 0 0 1">
+                <attach model="orcahand_right" body="right_tower" prefix="" />
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <!-- The hand tower sits inside the J4 capsule proxy by construction. -->
+    <exclude body1="left_J4_ORCA" body2="right_tower" />
+    <exclude body1="left_J4_ORCA" body2="right_palm" />
+  </contact>
+
+  <actuator>
+    <!-- Declared before the attached hand so ctrl indices 0..2 are the arm. -->
+    <position class="am_sts3095_joint" name="act_shoulder_pan" joint="shoulder_pan" ctrlrange="-3.14 3.14" forcerange="-8 8" />
+    <position class="am_sts3095_joint" name="act_shoulder_lift" joint="shoulder_lift" ctrlrange="-3.14 3.14" forcerange="-8 8" />
+    <position class="am_sts3095_joint" name="act_elbow_flex" joint="elbow_flex" ctrlrange="-3.14 3.14" forcerange="-8 8" />
+  </actuator>
+
+  <sensor>
+    <framepos name="orca_flange_position" objtype="site" objname="orca_flange_center" />
+    <framequat name="orca_flange_orientation" objtype="site" objname="orca_flange_center" />
+  </sensor>
+</mujoco>

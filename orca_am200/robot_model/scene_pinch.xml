@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="am_arm200_orca_right_pinch">
+  <!--
+    Pinch-lift task scene: the canonical robot plus one small upright cylinder.
+
+    The floor plane of the robot model is the desk the arm base is bolted to.
+    The object spawns inside the region where the thumb/index midpoint can reach
+    desk height with the palm within 35 deg of facing down (radius 0.33-0.47 m
+    in front of the base, found by grid search over arm + wrist joints). The
+    task module (orca_teleop.am200.tasks) re-samples its pose on every reset.
+
+    Kept next to the robot model so mesh paths and joint_map.json resolve
+    unchanged; the scene adds no actuators, so the 20-DoF contract still holds.
+  -->
+  <include file="am_arm200_orca_right.xml" />
+
+  <worldbody>
+    <body name="workspace_center" pos="0 -0.385 0.03" />
+    <geom name="workzone" type="box" pos="0 -0.385 -0.0015" size="0.17 0.05 0.0005"
+          contype="0" conaffinity="0" group="1" rgba="0.55 0.75 0.95 0.35" />
+
+    <camera name="task_front" mode="targetbody" target="workspace_center"
+            pos="0.05 -0.95 0.42" fovy="50" />
+    <camera name="task_side" mode="targetbody" target="workspace_center"
+            pos="0.55 -0.45 0.30" fovy="50" />
+
+    <body name="pinch_object" pos="0.037 -0.38 0.0255">
+      <freejoint name="pinch_object_free" />
+      <!-- The robot model compiles with inertiafromgeom="false", so spell it out:
+           solid cylinder, m = 30 g, r = 11 mm, h = 50 mm. -->
+      <inertial pos="0 0 0" mass="0.03" diaginertia="7.16e-06 7.16e-06 1.815e-06" />
+      <geom name="pinch_object_geom" type="cylinder" size="0.011 0.025"
+            condim="4" friction="1.0 0.02 0.0005" rgba="0.95 0.45 0.1 1" />
+    </body>
+  </worldbody>
+</mujoco>

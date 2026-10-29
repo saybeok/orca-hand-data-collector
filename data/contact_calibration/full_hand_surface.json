@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "method": "empirical_skin_clearance",
+  "status": "candidate",
+  "clearance_bias_m": {
+    "index": 0.002866249373737329,
+    "middle": -0.0010718196727775254,
+    "ring": 0.01002531558767332,
+    "pinky": 0.00018454549671787908
+  },
+  "validation_signed_errors_m": {
+    "index": [
+      0.0018802053831529107,
+      0.003261491414354372
+    ],
+    "middle": [
+      0.0020354142655187525,
+      -0.0011838780650187779
+    ],
+    "ring": [
+      -0.004805777056169095,
+      0.0010769369658703495
+    ],
+    "pinky": [
+      -0.003575562781150491,
+      0.002308026799642859
+    ]
+  },
+  "before_validation_signed_errors_m": {
+    "index": [
+      0.0047464547568902395,
+      0.006127740788091701
+    ],
+    "middle": [
+      0.0009635945927412272,
+      -0.0022556977377963033
+    ],
+    "ring": [
+      0.0052195385315042244,
+      0.01110225255354367
+    ],
+    "pinky": [
+      -0.003391017284432612,
+      0.002492572296360738
+    ]
+  },
+  "training_signed_errors_m": {
+    "index": [
+      0.0010992949003741526,
+      0.00011260144791634154,
+      -0.00011260144791634197,
+      -0.004447523413169218
+    ],
+    "middle": [
+      -8.062028174966461e-05,
+      -0.0026956354812560515,
+      0.00019247414020967762,
+      8.062028174966483e-05
+    ],
+    "ring": [
+      0.00017265984492524818,
+      0.0027426490828192304,
+      -0.0001726598449252499,
+      -0.006661118412663858
+    ],
+    "pinky": [
+      0.0001287228487301525,
+      -0.007022255862786018,
+      0.002057172650339327,
+      -0.00012872284873015252
+    ]
+  },
+  "training_leave_one_out_errors_m": {
+    "index": [
+      0.0012118963482904946,
+      0.0002252028958326835,
+      -0.0002252028958326835,
+      -0.004560124861085559
+    ],
+    "middle": [
+      -0.00016124056349932944,
+      -0.0027762557630057164,
+      0.00027309442195934223,
+      0.00016124056349932944
+    ],
+    "ring": [
+      0.0003453196898504981,
+      0.0029153089277444803,
+      -0.0003453196898504981,
+      -0.006833778257589106
+    ],
+    "pinky": [
+      0.000257445697460305,
+      -0.00715097871151617,
+      0.0021858954990694795,
+      -0.000257445697460305
+    ]
+  },
+  "held_out_limit_m": 0.005,
+  "training_samples": 16,
+  "validation_samples": 8,
+  "powered_contact_verified": false,
+  "limitations": "Passive motor-derived angles and convex skin hulls; not a kinematic identification or a 3 mm point-fit validation. Side/back contact, compliance, transmission under load and grasp force are unverified.",
+  "fingerprint": "230c5fe61a1c7dd16cfdf89a137113c55c7bc5701635553cc3677db1280acd07",
+  "mesh_sha256": {
+    "package://orcahand_description/v1/assets/urdf/right/collision/right_collision_thumb_dp_skin_mesh.stl": "957b3127099d0ceda9be7a3fac9f1ee0e7e6574d73b92b0f013d1f86a944b5ae",
+    "package://orcahand_description/v1/assets/urdf/right/collision/right_collision_index_ip_skin_mesh.stl": "9057f053358e4b38c6f3e495a19ac7949023f21771a356c12f56eb7390e46cbe",
+    "package://orcahand_description/v1/assets/urdf/right/collision/right_collision_middle_ip_skin_mesh.stl": "b79fdeec81754f2b956b9f9aab3b1099904cb3665fd5a8f107f5edc1ad07c7e2",
+    "package://orcahand_description/v1/assets/urdf/right/collision/right_collision_ring_ip_skin_mesh.stl": "73795561874b19a61fdd782a9b21dd8fc68c58b113908551f6f635f9fb28abc2",
+    "package://orcahand_description/v1/assets/urdf/right/collision/right_collision_pinky_ip_skin_mesh.stl": "3470ad21114b3b4dabb599d7c5b47622775d5079d4843a9c2ea86f4826805ff0"
+  },
+  "surface_frames": [
+    "right_thumb_dp",
+    "right_index_ip",
+    "right_middle_ip",
+    "right_ring_ip",
+    "right_pinky_ip"
+  ],
+  "measured_model_clearances_m": {
+    "index": [
+      0.0039655442741114814,
+      0.0029788508216536703,
+      0.002753647925820987,
+      -0.0015812740394318889,
+      0.0047464547568902395,
+      0.006127740788091701
+    ],
+    "middle": [
+      -0.00115243995452719,
+      -0.003767455154033577,
+      -0.0008793455325678478,
+      -0.0009911993910278606,
+      0.0009635945927412272,
+      -0.0022556977377963033
+    ],
+    "ring": [
+      0.010197975432598568,
+      0.01276796467049255,
+      0.00985265574274807,
+      0.003364197175009462,
+      0.0052195385315042244,
+      0.01110225255354367
+    ],
+    "pinky": [
+      0.00031326834544803157,
+      -0.006837710366068139,
+      0.002241718147057206,
+      5.582264798772658e-05,
+      -0.003391017284432612,
+      0.002492572296360738
+    ]
+  },
+  "source_samples": "/home/lee/orca_hand/data/contact_calibration/full_hand_contacts.json",
+  "source_sha256": "f58cc157e2808ffd0da9cc36aeea49c7e3232d3de04daf2b247a31884852fe26"
+}

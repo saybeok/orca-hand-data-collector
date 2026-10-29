@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="am_arm200_orca_right_hwatu">
+  <!--
+    Hwatu pick task scene: one Korean hwatu card lying flat on a raised block.
+
+    Card: 35 x 53 x 1 mm hard plastic (standard Korean hwatu). No published mass;
+    PVC at 1.4 g/cm^3 gives 2.6 g. Long axis along the card's local x.
+
+    The robot model's floor plane is the desk and has no edge, so the card sits
+    on an 8 cm block (think: a book). A flat card cannot be pinched straight off
+    a surface; the block edge makes the human strategy - slide it until it
+    overhangs, then pinch the overhang - possible. The +x side edge is used:
+    across the far edge the fingertip meshes need ~24 mm of clearance, more than
+    half the card, but beside the fingers only ~14 mm.
+  -->
+  <include file="am_arm200_orca_right.xml" />
+
+  <worldbody>
+    <body name="workspace_center" pos="0 -0.38 0.09" />
+    <camera name="task_front" mode="targetbody" target="workspace_center"
+            pos="0.05 -0.95 0.45" fovy="45" />
+    <camera name="task_side" mode="targetbody" target="workspace_center"
+            pos="0.50 -0.40 0.30" fovy="45" />
+
+    <!-- 24 x 14 x 8 cm block; top at z = 0.08, +x side edge at x = 0.12. -->
+    <geom name="hwatu_block" type="box" pos="0 -0.37 0.04" size="0.12 0.07 0.04"
+          condim="3" friction="0.6 0.005 0.0001" rgba="0.35 0.45 0.6 1" />
+
+    <body name="hwatu_card" pos="0.05 -0.37 0.0805">
+      <freejoint name="hwatu_card_free" />
+      <!-- The robot model compiles with inertiafromgeom="false", so spell it out:
+           m = 2.6 g box 53 x 35 x 1 mm. -->
+      <inertial pos="0 0 0" mass="0.0026"
+                diaginertia="2.66e-07 6.09e-07 8.74e-07" />
+      <geom name="hwatu_card_geom" type="box" size="0.0265 0.0175 0.0005"
+            condim="4" friction="0.5 0.01 0.0005" rgba="0.8 0.1 0.12 1" />
+    </body>
+  </worldbody>
+</mujoco>

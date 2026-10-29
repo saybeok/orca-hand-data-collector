@@ -1,0 +1,128 @@
+{
+  "robot": "AM-ARM200 3DoF + ORCA right hand",
+  "total_dof": 20,
+  "arm_dof": 3,
+  "orca_right_dof": 17,
+  "canonical_order": [
+    {
+      "index": 0,
+      "role": "arm.shoulder_pan",
+      "joint_name": "shoulder_pan",
+      "actuator_name": "act_shoulder_pan"
+    },
+    {
+      "index": 1,
+      "role": "arm.shoulder_lift",
+      "joint_name": "shoulder_lift",
+      "actuator_name": "act_shoulder_lift"
+    },
+    {
+      "index": 2,
+      "role": "arm.elbow_flex",
+      "joint_name": "elbow_flex",
+      "actuator_name": "act_elbow_flex"
+    },
+    {
+      "index": 3,
+      "role": "hand.orca_right_00",
+      "joint_name": "orcahand_right_R-Carpals_8d1f1041_to_TopTower-Model_4a80d30e",
+      "actuator_name": "act_orcahand_right_R-Carpals_8d1f1041_to_TopTower-Model_4a80d30e"
+    },
+    {
+      "index": 4,
+      "role": "hand.orca_right_01",
+      "joint_name": "orcahand_right_P-AP_f5e42b61_to_R-Carpals_8d1f1041",
+      "actuator_name": "act_orcahand_right_P-AP_f5e42b61_to_R-Carpals_8d1f1041"
+    },
+    {
+      "index": 5,
+      "role": "hand.orca_right_02",
+      "joint_name": "orcahand_right_P-PP_1d411b9b_to_P-AP_f5e42b61",
+      "actuator_name": "act_orcahand_right_P-PP_1d411b9b_to_P-AP_f5e42b61"
+    },
+    {
+      "index": 6,
+      "role": "hand.orca_right_03",
+      "joint_name": "orcahand_right_P-FingerTipAssembly_cd219176_to_P-PP_1d411b9b",
+      "actuator_name": "act_orcahand_right_P-FingerTipAssembly_cd219176_to_P-PP_1d411b9b"
+    },
+    {
+      "index": 7,
+      "role": "hand.orca_right_04",
+      "joint_name": "orcahand_right_M-AP_6ec59111_to_R-Carpals_8d1f1041",
+      "actuator_name": "act_orcahand_right_M-AP_6ec59111_to_R-Carpals_8d1f1041"
+    },
+    {
+      "index": 8,
+      "role": "hand.orca_right_05",
+      "joint_name": "orcahand_right_M-PP_8660a1eb_to_M-AP_6ec59111",
+      "actuator_name": "act_orcahand_right_M-PP_8660a1eb_to_M-AP_6ec59111"
+    },
+    {
+      "index": 9,
+      "role": "hand.orca_right_06",
+      "joint_name": "orcahand_right_M-FingerTipAssembly_424a8e75_to_M-PP_8660a1eb",
+      "actuator_name": "act_orcahand_right_M-FingerTipAssembly_424a8e75_to_M-PP_8660a1eb"
+    },
+    {
+      "index": 10,
+      "role": "hand.orca_right_07",
+      "joint_name": "orcahand_right_M-AP_e04a96f2_to_R-Carpals_8d1f1041",
+      "actuator_name": "act_orcahand_right_M-AP_e04a96f2_to_R-Carpals_8d1f1041"
+    },
+    {
+      "index": 11,
+      "role": "hand.orca_right_08",
+      "joint_name": "orcahand_right_M-PP_08efa608_to_M-AP_e04a96f2",
+      "actuator_name": "act_orcahand_right_M-PP_08efa608_to_M-AP_e04a96f2"
+    },
+    {
+      "index": 12,
+      "role": "hand.orca_right_09",
+      "joint_name": "orcahand_right_M-FingerTipAssembly_34afb748_to_M-PP_08efa608",
+      "actuator_name": "act_orcahand_right_M-FingerTipAssembly_34afb748_to_M-PP_08efa608"
+    },
+    {
+      "index": 13,
+      "role": "hand.orca_right_10",
+      "joint_name": "orcahand_right_I-AP-R_d95d02d1_to_R-Carpals_8d1f1041",
+      "actuator_name": "act_orcahand_right_I-AP-R_d95d02d1_to_R-Carpals_8d1f1041"
+    },
+    {
+      "index": 14,
+      "role": "hand.orca_right_11",
+      "joint_name": "orcahand_right_I-PP_bacbd481_to_I-AP-R_d95d02d1",
+      "actuator_name": "act_orcahand_right_I-PP_bacbd481_to_I-AP-R_d95d02d1"
+    },
+    {
+      "index": 15,
+      "role": "hand.orca_right_12",
+      "joint_name": "orcahand_right_I-FingerTipAssembly_ec49c16c_to_I-PP_bacbd481",
+      "actuator_name": "act_orcahand_right_I-FingerTipAssembly_ec49c16c_to_I-PP_bacbd481"
+    },
+    {
+      "index": 16,
+      "role": "hand.orca_right_13",
+      "joint_name": "orcahand_right_T-TP-R_1c2b802d_to_R-Carpals_8d1f1041",
+      "actuator_name": "act_orcahand_right_T-TP-R_1c2b802d_to_R-Carpals_8d1f1041"
+    },
+    {
+      "index": 17,
+      "role": "hand.orca_right_14",
+      "joint_name": "orcahand_right_R-T-AP_a9723101_to_T-TP-R_1c2b802d",
+      "actuator_name": "act_orcahand_right_R-T-AP_a9723101_to_T-TP-R_1c2b802d"
+    },
+    {
+      "index": 18,
+      "role": "hand.orca_right_15",
+      "joint_name": "orcahand_right_T-PP_68395e98_to_R-T-AP_a9723101",
+      "actuator_name": "act_orcahand_right_T-PP_68395e98_to_R-T-AP_a9723101"
+    },
+    {
+      "index": 19,
+      "role": "hand.orca_right_16",
+      "joint_name": "orcahand_right_T-DP_b7429e50_to_T-PP_68395e98",
+      "actuator_name": "act_orcahand_right_T-DP_b7429e50_to_T-PP_68395e98"
+    }
+  ]
+}

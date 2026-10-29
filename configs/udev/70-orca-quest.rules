@@ -1,0 +1,3 @@
+# Meta Quest 3 (observed USB ID 2833:5013): allow unprivileged ADB access.
+# Install into /etc/udev/rules.d/ as root; keep the ADB server running as the user.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="2833", ATTR{idProduct}=="5013", MODE="0660", GROUP="plugdev", TAG+="uaccess"

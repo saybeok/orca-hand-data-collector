@@ -1,0 +1,23 @@
+# Physical motor ID probe (2026-08-30) — right Feetech unit
+# Format: motor_id: joint_name  # user label
+# Thumb correction (2026-10-27): isolated real motions were compared with the
+# model-axis GIF. The old 13=thumb_pip / 16=thumb_mcp correspondence was reversed.
+# Names below follow the robot model, not anatomical human-thumb terminology.
+
+1: index_pip
+2: index_mcp
+3: index_abd
+4: middle_abd
+5: pinky_abd
+6: pinky_pip
+7: pinky_mcp
+8: middle_pip
+9: middle_mcp
+10: ring_mcp
+11: ring_pip
+12: ring_abd
+13: thumb_mcp   # user: 엄지 CMC/root; model-axis match verified 2026-10-27
+14: thumb_abd
+15: thumb_dip   # user: 엄지 IP
+16: thumb_pip   # user: 엄지 MCP flexion; model-axis match verified 2026-10-27
+17: wrist

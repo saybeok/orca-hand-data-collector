@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="am_arm200_orca_right_hwatu_mat">
+  <!--
+    Hwatu on a blanket (the classic go-stop setup): same card and block as
+    scene_hwatu.xml, with a 16 mm soft mat (a folded blanket) on the block.
+
+    A real blanket gives several mm under a pressing finger but almost nothing
+    under a 2.6 g card; that lets the pads get below the card's bottom face,
+    which a hard surface never allows. MuJoCo contact softness is
+    acceleration-based (a light card would sink as much as the arm-loaded
+    fingertip), so the card gets explicit stiff pairs and the mat's own soft
+    parameters apply to the hand: ~7 mm at 0.7 N, ~10 mm at 1.8 N. Tuned, not
+    measured. A 5 mm mat giving ~2 mm was not enough: the rounded pads still
+    met the card's top corner and pushed it down.
+
+    The block and blanket are 40 x 28 cm so the card can be carried and put down
+    elsewhere (hwatu_place). ``hwatu_target`` is a mocap marker printed on the
+    blanket: tasks that do not use it park it out of sight.
+  -->
+  <include file="am_arm200_orca_right.xml" />
+
+  <worldbody>
+    <body name="workspace_center" pos="0 -0.38 0.09" />
+    <camera name="task_front" mode="targetbody" target="workspace_center"
+            pos="0.05 -0.95 0.45" fovy="45" />
+    <camera name="task_side" mode="targetbody" target="workspace_center"
+            pos="0.50 -0.40 0.30" fovy="45" />
+
+    <geom name="hwatu_block" type="box" pos="0 -0.38 0.04" size="0.20 0.14 0.04"
+          condim="3" friction="0.6 0.005 0.0001" rgba="0.35 0.45 0.6 1" />
+    <!-- top at z = 0.096 -->
+    <geom name="hwatu_mat" type="box" pos="0 -0.38 0.0880" size="0.20 0.14 0.0080"
+          condim="3" friction="0.8 0.005 0.0001" solref="0.3 1" solimp="0.01 0.9 0.016"
+          rgba="0.28 0.36 0.24 1" />
+
+    <body name="hwatu_target" mocap="true" pos="0 -0.38 -1">
+      <geom name="hwatu_target_mark" type="box" size="0.0285 0.0195 0.0002" pos="0 0 0.0002"
+            contype="0" conaffinity="0" rgba="0.95 0.85 0.2 0.8" />
+    </body>
+
+    <body name="hwatu_card" pos="0.0 -0.37 0.0965">
+      <freejoint name="hwatu_card_free" />
+      <inertial pos="0 0 0" mass="0.0026"
+                diaginertia="2.66e-07 6.09e-07 8.74e-07" />
+      <geom name="hwatu_card_geom" type="box" size="0.0265 0.0175 0.0005"
+            condim="4" friction="0.5 0.01 0.0005" rgba="0.8 0.1 0.12 1" />
+    </body>
+  </worldbody>
+
+  <contact>
+    <!-- The world-body geoms (floor, block, mat) touch the card only through these. -->
+    <exclude body1="world" body2="hwatu_card" />
+    <pair geom1="hwatu_card_geom" geom2="hwatu_mat" condim="3" friction="0.8 0.8 0.005 0.0001 0.0001" />
+    <pair geom1="hwatu_card_geom" geom2="hwatu_block" condim="3" friction="0.6 0.6 0.005 0.0001 0.0001" />
+    <pair geom1="hwatu_card_geom" geom2="floor" condim="3" />
+  </contact>
+</mujoco>

@@ -1,0 +1,28 @@
+# AM-ARM200 follower — first 3 DoF only (ORCA hand mounts on the flange).
+# Motors probed 2026-09-04 on this unit.
+# Stable USB-serial path (the hand adapter is ...5B79079884).
+port: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B79018828-if00
+baudrate: 1000000
+motor_type: feetech
+
+# Motor ID → joint (matches liyiteng/AM-ARM follower layout for IDs 1–3)
+joint_to_motor_map:
+  shoulder_pan: 1
+  shoulder_lift: 2
+  elbow_flex: 3
+
+# +1 until flex/extend direction is verified against MuJoCo/IK.
+joint_signs:
+  shoulder_pan: -1   # flipped 2026-09-04 (user: 좌우 반전)
+  shoulder_lift: 1
+  elbow_flex: 1
+
+# Feetech torque units 0–1000 (≈ mA mapping in orca_core FeetechClient).
+max_torque: 700
+jog_torque: 350
+# Speed unit ~0.732 RPM; 1500 is orca_core's STS "go as fast as you can".
+default_speed: 1500
+
+# Soft per-command step cap from the captured home (rad).
+# null = no software clip (IK / servo stops still apply).
+max_step_from_home_rad: null

@@ -1,0 +1,9 @@
+# Physical AM-ARM200 3-DoF probe (2026-09-04)
+# Port: /dev/ttyACM1 @ 1_000_000 baud
+# Note: single-motor probes disable other joints → gravity drop on shoulder_lift.
+# Holding torque on non-probed joints required for safe motion.
+
+1: shoulder_pan    # sign -1 (left/right was inverted)
+2: shoulder_lift
+3: elbow_flex
+
