@@ -9,8 +9,9 @@ Record — per episode:
     into one dataset row. Recording timing does not drive robot dispatch.
   - recorder thread: blocks on ``rec_q``, calls ``dataset.add_frame(...)`` for
     every dict, and ``dataset.save_episode()`` when it sees the SAVE sentinel
-  - LeRobot image writer: four threads per camera write PNGs asynchronously;
-    saving an episode waits for and validates the images before video encoding
+  - LeRobot streaming encoder: write H.264 while recording; on save verify
+    complete video frames/timestamps before committing episode metadata.
+    --video-storage images retains the asynchronous PNG/AV1 fallback.
   - episodes after the first begin with ``go_home()`` (reset to the recording home
     pose), rest (default 5 s) with no teleop dispatch, then sensor warmup and
     recording; episode 1 starts without homing; SPACE saves and advances; at
@@ -275,18 +276,32 @@ def _stub_action_publisher(
         time.sleep(period)
 
 
-def _create_recording_dataset(dataset_class, *, repo_id, fps, features, root):
+def _create_recording_dataset(dataset_class, *, repo_id, fps, features, root,
+                              video_storage='streaming'):
     camera_count = sum(ft['dtype'] in ('image', 'video') for ft in features.values())
-    threads = _IMAGE_WRITER_THREADS_PER_CAMERA * camera_count
+    streaming = video_storage == 'streaming' and any(ft['dtype'] == 'video' for ft in features.values())
+    image_count = sum(ft['dtype'] == 'image' for ft in features.values()) if streaming else camera_count
+    threads = _IMAGE_WRITER_THREADS_PER_CAMERA * image_count
     dataset = dataset_class.create(
         repo_id=repo_id, fps=fps, features=features, root=root, use_videos=True,
         image_writer_processes=0, image_writer_threads=threads,
+        **({'vcodec': 'h264', 'streaming_encoding': True, 'encoder_threads': 2,
+            'encoder_queue_maxsize': 30} if streaming else {}),
     )
-    logger.info('Image storage: %d cameras, %d asynchronous writer threads.', camera_count, threads)
+    if streaming:
+        from orca_teleop.recording_storage import CheckedStreamingEncoder
+        dataset._streaming_encoder = CheckedStreamingEncoder(dataset._streaming_encoder, features, fps)
+        logger.info('Video storage: streaming H.264, %d cameras, 2 encoder threads/camera; '
+                    'frame drops invalidate the trial.', camera_count)
+    else:
+        logger.info('Image storage: %d cameras, %d asynchronous writer threads.', camera_count, threads)
     return dataset
 
 
 def _check_image_writer_backlog(dataset):
+    encoder = getattr(dataset, '_streaming_encoder', None)
+    if encoder is not None:
+        encoder.check()
     writer = getattr(dataset, 'image_writer', None)
     if writer is None:
         return
@@ -297,12 +312,15 @@ def _check_image_writer_backlog(dataset):
 
 def _validate_recorded_images(dataset):
     """Catch swallowed LeRobot PNG write failures before committing episode metadata."""
+    encoder = getattr(dataset, '_streaming_encoder', None)
+    if encoder is not None:
+        encoder.prepare_episode(expected_frames=dataset.episode_buffer['size'])
     writer = getattr(dataset, 'image_writer', None)
     if writer is not None:
         writer.wait_until_done()
     image_features = {
         key: ft for key, ft in getattr(dataset, 'features', {}).items()
-        if ft['dtype'] in ('image', 'video')
+        if ft['dtype'] == 'image' or (ft['dtype'] == 'video' and encoder is None)
     }
     if not image_features:
         return
@@ -361,9 +379,13 @@ def _recorder_loop(
                     _discard_recording_episode(dataset)
                     logger.error('Refusing to save an episode after a frame write failure.')
                 else:
+                    started = time.perf_counter()
                     _validate_recorded_images(dataset)
+                    logger.info('Episode image/queue validation completed in %.2f s.', time.perf_counter()-started)
+                    started = time.perf_counter()
                     dataset.save_episode()
-                    logger.info("Episode saved.")
+                    logger.info("Episode saved in %.2f s (statistics, video verification, metadata).",
+                                time.perf_counter()-started)
                     succeeded = True
             except Exception:
                 logger.exception("Failed to save episode")
@@ -416,6 +438,8 @@ def _main_record(argv: list[str]) -> None:
                         help='Hold middle/ring/pinky folded; keep thumb/index/wrist teleoperated.')
     parser.add_argument('--hand-feedback-debug', action=argparse.BooleanOptionalAction, default=True,
                         help='am200_hw: log commanded and motor-derived hand angles once per second.')
+    parser.add_argument('--video-storage', choices=('streaming', 'images'), default='streaming',
+                        help='Encode H.264 during recording (default), or retain the PNG/AV1 path.')
     parser.add_argument('--control-dir', type=Path, default=None,
                         help='Local desktop collector control/preview directory (no TTY needed).')
     parser.add_argument('--auto-home', action=argparse.BooleanOptionalAction, default=True,
@@ -809,6 +833,7 @@ def _main_record(argv: list[str]) -> None:
         fps=args.fps,
         features=features,
         root=args.root,
+        video_storage=args.video_storage,
     )
     logger.info("Dataset root: %s", dataset.root)
     if control:

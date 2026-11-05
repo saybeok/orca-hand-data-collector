@@ -458,6 +458,8 @@ def launch(collector):
             detail_var.set('Quest Browser: http://localhost:8765 → Start hand tracking · 오른손을 보이게 해주세요.')
         elif phase == 'recording':
             detail_var.set('시연을 마치면 성공 저장, 실패하면 실패 · 재시도를 누르세요.')
+        elif phase == 'finalizing':
+            detail_var.set('영상 프레임 수·시간 정보와 데이터를 확인해 저장하는 중입니다…')
         elif phase == 'ready':
             if state.get('arm_home_saved'):
                 detail_var.set('팔 초기 자세를 저장했습니다. 다음 연결과 세션 종료 시 이 자세로 복귀합니다.')
