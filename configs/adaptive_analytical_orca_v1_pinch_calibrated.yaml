@@ -62,11 +62,11 @@ retarget:
     y: 0.0
     z: 0.0
   surface_contact_calibration: ../data/contact_calibration/full_hand_surface.json
-  # Keep index/middle at 8 mm; close ring/pinky an additional 2 mm.
+  # Close index/middle an additional 2 mm; all pairs now use a 10 mm margin.
   # Separate runtime tuning; recorded contacts and fitted biases remain unchanged.
   surface_contact_closure_margin_mm:
-    index: 8.0
-    middle: 8.0
+    index: 10.0
+    middle: 10.0
     ring: 10.0
     pinky: 10.0
 robot_frames:
