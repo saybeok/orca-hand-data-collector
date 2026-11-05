@@ -79,6 +79,9 @@ class AmArmFeetech:
         self._home_pose_path = (None if not raw_home else
                                (self._config_path.parent / raw_home).resolve())
         self._park_motor: np.ndarray | None = None
+        self._feedback_diagnostics = bool(self._cfg.get('feedback_diagnostics', False))
+        self._last_feedback_s = -float('inf')
+        self._last_motor_target: np.ndarray | None = None
 
     @property
     def joint_names(self) -> list[str]:
@@ -154,7 +157,29 @@ class AmArmFeetech:
         """Motor positions expressed as model radians relative to connect-home."""
         assert self._motor_home is not None
         motor = self.read_motor_rad()
+        self._log_control_feedback()
         return (motor - self._motor_home) / self._signs
+
+    def _log_control_feedback(self) -> None:
+        if not self._feedback_diagnostics or time.monotonic() - self._last_feedback_s < 1.0:
+            return
+        self._last_feedback_s = time.monotonic()
+        try:
+            status = self._client.read_sts_control_status()
+            for index, motor_id in enumerate(self._motor_ids):
+                item = status[motor_id]
+                requested = (None if self._last_motor_target is None else
+                             round(math.degrees(self._last_motor_target[index]), 1))
+                logger.info('Arm feedback | ID=%d %s | requested_deg=%s | servo_goal_deg=%.1f | '
+                            'actual_deg=%.1f | torque_on=%s | limit_raw=%s | mode=%s | '
+                            'voltage=%.1fV | current=%.0fmA | temp=%sC | status=0x%02x',
+                            motor_id, self._joint_names[index], requested,
+                            math.degrees(item['goal_rad']), math.degrees(item['position_rad']),
+                            item['torque_enabled'], item['torque_limit_raw'], item['mode'],
+                            item['voltage_v'], item['current_ma'], item['temperature_c'],
+                            item['error_status'])
+        except Exception:
+            logger.warning('Arm control feedback unavailable; servo settings were not changed', exc_info=True)
 
     def write_model_rad(
         self,
@@ -184,6 +209,7 @@ class AmArmFeetech:
             speed=int(self._speed if speed is None else speed),
             torque=int(self._max_torque if torque is None else torque),
         )
+        self._last_motor_target = motor.copy()
 
     def hold_current(self, torque: int | None = None, speed: int | None = None) -> None:
         assert self._motor_home is not None

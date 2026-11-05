@@ -170,3 +170,30 @@ def test_connection_holds_arm_before_waiting_for_cameras(setup_arm, monkeypatch)
     sink.connect()
     assert events == ['cameras']
     sink.close(return_home=False)
+
+
+def test_diagnostic_feedback_is_throttled_without_torque_or_goal_changes(setup_arm, monkeypatch, caplog):
+    config, clients = setup_arm
+    arm = AmArmFeetech(config)
+    arm.connect()
+    arm._feedback_diagnostics = True
+    samples = []
+
+    def status():
+        samples.append(True)
+        return {motor: dict(mode=0, torque_enabled=1, torque_limit_raw=700,
+                            goal_rad=-1., position_rad=-1.5, voltage_v=10.8,
+                            current_ma=2200, temperature_c=42, error_status=32)
+                for motor in (1, 2, 3)}
+
+    clients[0].read_sts_control_status = status
+    before = [entry for entry in clients[0].calls if isinstance(entry, tuple)]
+    with caplog.at_level('INFO', logger=arm_client.__name__):
+        for now in (1., 1.1, 2.2):
+            monkeypatch.setattr(arm_client.time, 'monotonic', lambda: now)
+            arm.read_model_rad()
+    after = [entry for entry in clients[0].calls if isinstance(entry, tuple)]
+    assert len(before) == len(after)
+    assert len(samples) == 2
+    assert 'voltage=10.8V' in caplog.text and 'status=0x20' in caplog.text
+    arm.disconnect(disable_torque=False)

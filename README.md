@@ -173,6 +173,12 @@ ls -l /dev/serial/by-id/
 
 앱 하단 로그를 확인하세요. 전체 로그는 `data/collector_ui/sessions/<세션>/recorder.log`에 있습니다. Quest 브라우저가 열린 것만으로는 충분하지 않고 **Start hand tracking**을 누르고 오른손이 추적돼야 합니다.
 
+### VR 시작 순간 팔이 처짐
+
+팔을 받침으로 지지한 상태에서 확인하세요. 준비 자세 저장만으로 전원·유지력 문제를 해결할 수는 없습니다. 팔 설정의 `feedback_diagnostics: true`는 기존 연결에서 1초에 한 번 STS 상태를 읽고 `Arm feedback` 로그를 남깁니다. 별도 USB 연결을 열거나 목표각·토크·보호 설정을 바꾸지 않습니다.
+
+로그에는 요청한 각도, 모터에 실제 설정된 목표각, 실제각, 토크 켜짐, 실제 토크 한도(48번 레지스터), 전압, 전류, 온도, 보호 상태가 들어갑니다. VR 시작 전후를 비교해 명령 변화·전압 저하·보호 작동·추종 오차를 구분합니다. `max_torque` 설정값만 보고 실제 모터 출력이나 유지력을 판단하지 마세요. 상태 비트 의미는 [Feetech STS 공식 메모리 표](https://ftservo.github.io/ftservo-wiki/reference/parameter/memory-sts/)를 참고하세요.
+
 ### 설치 후 환경 확인
 
 ```bash

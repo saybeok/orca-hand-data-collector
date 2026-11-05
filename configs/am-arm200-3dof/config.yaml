@@ -33,3 +33,5 @@ home_velocity_deg_s: 15
 home_acceleration_deg_s2: 45
 return_home_on_close: true
 hold_on_disconnect: true
+# Read-only, once-per-second feedback to diagnose loaded-arm sag at VR start.
+feedback_diagnostics: true

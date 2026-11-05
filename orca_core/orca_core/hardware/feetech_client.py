@@ -887,6 +887,44 @@ class FeetechClient(MotorClient):
             # Clear params for next use
             self.packet_handler.groupSyncWrite.clearParam()
 
+    def read_sts_control_status(self) -> dict[int, dict]:
+        """Read STS arm control/feedback registers without changing servo state.
+
+        STS register 48 is the torque limit; register 44 is not a torque-limit
+        register. Keep this diagnostic separate from the ORCA HLS write path.
+        """
+        self._check_connected()
+        with self._bus_lock:
+            reader = GroupSyncRead(self.packet_handler, 33, 38)
+            for motor_id in self.motor_ids:
+                reader.addParam(motor_id)
+            if reader.txRxPacket() != COMM_SUCCESS:
+                self._flush_input_buffer()
+                raise OSError('STS control status read failed')
+            status = {}
+            for motor_id in self.motor_ids:
+                available, error = reader.isAvailable(motor_id, 33, 38)
+                if not available or error:
+                    self._flush_input_buffer()
+                    raise OSError(f'STS control status unavailable for motor {motor_id}: {error}')
+
+                def value(address, size=1):
+                    return reader.getData(motor_id, address, size)
+
+                def position(address):
+                    signed = self.packet_handler.scs_tohost(value(address, 2), 15)
+                    return self._raw_to_rad(signed, self.pos_scale)
+
+                status[motor_id] = {
+                    'mode': value(33), 'torque_enabled': value(40),
+                    'torque_limit_raw': value(48, 2),
+                    'goal_rad': position(42), 'position_rad': position(56),
+                    'voltage_v': value(62) / 10.0, 'temperature_c': value(63),
+                    'error_status': value(65),
+                    'current_ma': self.packet_handler.scs_tohost(value(69, 2), 15) * self.cur_scale,
+                }
+            return status
+
     def read_position_velocity_current(self) -> MotorRead:
         """Read position, velocity, and current for all motors in one sync packet.
 

@@ -158,6 +158,37 @@ def test_disconnect_closes_port_and_only_releases_torque_when_requested(client, 
     assert ('write1' in handler.log) == disable_torque
 
 
+@pytest.mark.parametrize('missing', [False, True])
+def test_sts_control_status_is_read_only_and_rejects_missing_replies(client, monkeypatch, missing):
+    feetech, handler = client
+    raw = {33: 0, 40: 1, 42: 200, 48: 700, 56: 400, 62: 118, 63: 42, 65: 32, 69: 100}
+
+    class Reader:
+        def __init__(self, packet, address, size):
+            assert packet is handler and (address, size) == (33, 38)
+            self.ids = []
+        def addParam(self, motor_id):
+            self.ids.append(motor_id)
+        def txRxPacket(self):
+            assert self.ids == [1, 2, 3]
+            return COMM_SUCCESS
+        def isAvailable(self, motor_id, address, size):
+            return not (missing and motor_id == 2), 0
+        def getData(self, motor_id, address, size):
+            return raw[address]
+
+    monkeypatch.setattr(feetech_client_module, 'GroupSyncRead', Reader)
+    if missing:
+        with pytest.raises(OSError, match='motor 2'):
+            feetech.read_sts_control_status()
+    else:
+        status = feetech.read_sts_control_status()
+        assert status[2]['torque_enabled'] == 1 and status[2]['torque_limit_raw'] == 700
+        assert status[2]['voltage_v'] == 11.8 and status[2]['error_status'] == 32
+        assert status[2]['position_rad'] == pytest.approx(_expected_pos(feetech, 400))
+    assert not any('write' in entry for entry in handler.log)
+
+
 def test_full_sync_read_reports_ok(client):
     feetech, _ = client
     read = feetech.read_position_velocity_current()
