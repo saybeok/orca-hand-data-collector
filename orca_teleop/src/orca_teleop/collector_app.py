@@ -275,6 +275,8 @@ class Collector:
                    '--repo-id', f'local/{self.dataset_root.name}', '--root', str(self.dataset_root),
                    '--control-dir', str(self.control_dir)]
         command += ['--stub'] if self.demo else ['--local', '--source', 'metaquest', '--hand', 'right']
+        if not self.demo:
+            command += ['--hand-feedback-debug']
         if not self.demo and s.get('fold_three_fingers', False):
             command += ['--fold-three-fingers']
         for spec in specs:

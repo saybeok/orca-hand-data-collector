@@ -1,6 +1,8 @@
 optimizer:
   type: adaptive_analytical
 retarget:
+  # Fingertip-to-palm distance shrinks with folded fingers and inflates scale.
+  scale_calibration: bone_lengths
   wrist_input_scale: 2.0
   huber_delta_cm: 2.0
   huber_delta_dir: 0.5

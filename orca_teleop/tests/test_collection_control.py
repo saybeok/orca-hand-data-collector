@@ -166,6 +166,7 @@ def test_fixed_fingers_option_is_persisted_and_passed_only_to_live_sessions(tmp_
     reloaded.dataset_root, reloaded.control_dir = tmp_path / 'dataset', tmp_path / 'controls'
     command = reloaded.build_command([])
     assert ('--fold-three-fingers' in command) == (enabled and not demo)
+    assert ('--hand-feedback-debug' in command) == (not demo)
     assert command[command.index('--task') + 1] == 'move the eclipse case'
     with pytest.raises(ValueError, match='체크'):
         reloaded.save_settings(dict(reloaded.settings, fold_three_fingers='false'))

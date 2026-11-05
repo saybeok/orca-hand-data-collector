@@ -414,6 +414,8 @@ def _main_record(argv: list[str]) -> None:
     parser.add_argument("--task", required=True, help="Task description for every episode")
     parser.add_argument('--fold-three-fingers', action='store_true',
                         help='Hold middle/ring/pinky folded; keep thumb/index/wrist teleoperated.')
+    parser.add_argument('--hand-feedback-debug', action=argparse.BooleanOptionalAction, default=True,
+                        help='am200_hw: log commanded and motor-derived hand angles once per second.')
     parser.add_argument('--control-dir', type=Path, default=None,
                         help='Local desktop collector control/preview directory (no TTY needed).')
     parser.add_argument('--auto-home', action=argparse.BooleanOptionalAction, default=True,
@@ -728,6 +730,7 @@ def _main_record(argv: list[str]) -> None:
                 camera_configs=camera_configs,
                 enable_arm=not args.no_arm,
                 arm_max_step_rad=args.arm_max_step,
+                hand_feedback_debug=args.hand_feedback_debug,
             )
         retarget_model_path = args.hand_config
         if not args.stub:

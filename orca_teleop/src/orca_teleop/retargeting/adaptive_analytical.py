@@ -544,6 +544,9 @@ class AdaptiveAnalyticalRetargeter:
 
     def _build_retarget_params(self) -> None:
         cfg = self._retarget_cfg
+        self._scale_calibration = cfg.get('scale_calibration', 'fingertip_distance')
+        if self._scale_calibration not in ('fingertip_distance', 'bone_lengths'):
+            raise ValueError('scale_calibration must be fingertip_distance or bone_lengths')
         self._wrist_input_scale = float(cfg.get('wrist_input_scale', 1.0))
         if not np.isfinite(self._wrist_input_scale) or self._wrist_input_scale <= 0:
             raise ValueError('wrist_input_scale must be finite and positive')
@@ -658,6 +661,10 @@ class AdaptiveAnalyticalRetargeter:
         palm = self._robot_palm_from_positions(neutral_positions)
         urdf_keyvectors = tip_pos - palm
         self._urdf_keyvector_mags = 0.9 * np.linalg.norm(urdf_keyvectors, axis=1)
+        chains = np.stack([neutral_positions[indices] for indices in
+                           (self._base_indices, self._pip_indices,
+                            self._dip_indices, self._tip_indices)], axis=1)
+        self._urdf_bone_lengths = 0.9 * np.linalg.norm(np.diff(chains, axis=1), axis=2).sum(axis=1)
 
     def _build_thumb_ip_reference(self) -> None:
         """Derive the thumb's zero-angle bone bend from URDF tip-frame geometry.
@@ -712,14 +719,23 @@ class AdaptiveAnalyticalRetargeter:
         return float(np.arccos(np.clip(a @ b / norm, -1, 1)))
 
     def _ingest_calibration_frame(self, normalized_joints: np.ndarray, source: str) -> None:
-        joint_t = torch.tensor(normalized_joints, dtype=torch.float32)
-        fingertips, palm = retargeter_utils.extract_mano_fingertips_and_palm(
-            joint_t,
-            list(FINGERS),
-            source,
-        )
-        keyvectors = retargeter_utils.get_keyvectors(fingertips, palm)
-        mags = np.array([kv.detach().cpu().norm().item() for kv in keyvectors])
+        if self._scale_calibration == 'bone_lengths':
+            # Sum adjacent bone lengths, which do not shrink when the operator
+            # folds three fingers or recalibrates during a pinch.
+            joints = retargeter_utils.get_mano_joints_dict(normalized_joints, source)
+            mags = np.array([np.linalg.norm(np.diff(joints[finger], axis=0), axis=1).sum()
+                             for finger in FINGERS])
+            if not np.isfinite(mags).all() or np.any(mags <= 1e-5):
+                raise ValueError('Degenerate hand bone lengths during scale calibration')
+            reference = self._urdf_bone_lengths
+        else:
+            joint_t = torch.tensor(normalized_joints, dtype=torch.float32)
+            fingertips, palm = retargeter_utils.extract_mano_fingertips_and_palm(
+                joint_t, list(FINGERS), source,
+            )
+            keyvectors = retargeter_utils.get_keyvectors(fingertips, palm)
+            mags = np.array([kv.detach().cpu().norm().item() for kv in keyvectors])
+            reference = self._urdf_keyvector_mags
         self._calibration_mags.append(mags)
 
         if len(self._calibration_mags) < CALIBRATION_FRAMES:
@@ -727,15 +743,16 @@ class AdaptiveAnalyticalRetargeter:
 
         all_mags = np.array(self._calibration_mags)
         median_mano = np.median(all_mags, axis=0)
-        ratios = self._urdf_keyvector_mags / np.clip(median_mano, 1e-6, None)
+        ratios = reference / np.clip(median_mano, 1e-6, None)
         self._mano_scale = float(np.median(ratios))
         self._calibration_done = True
         self._last_qpos_phys = None
         self._filter.reset()
         logger.info(
-            "Adaptive retargeter auto-scale calibrated: mano_scale=%.4f " "(per-finger ratios=%s)",
+            "Adaptive retargeter auto-scale calibrated: mano_scale=%.4f " "(per-finger ratios=%s, method=%s)",
             self._mano_scale,
             np.round(ratios, 3).tolist(),
+            self._scale_calibration,
         )
 
     def _target_keypoints_in_urdf_frame(self, normalized_joints: np.ndarray) -> np.ndarray:
