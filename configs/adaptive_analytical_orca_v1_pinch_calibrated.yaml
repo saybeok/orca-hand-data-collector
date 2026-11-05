@@ -16,7 +16,8 @@ retarget:
   w_thumb_ip_bend: 5.0
   thumb_ip_bend_scope: free
   pinch_pair_weights:
-    index: 1.0
+    # Prioritize thumb-index contact over anatomical posture near a pinch.
+    index: 8.0
     middle: 2.0
     ring: 2.0
     pinky: 2.0
@@ -47,8 +48,10 @@ retarget:
     - 1.15
   pinch_thresholds_cm:
     index:
-      d1: 2.0
-      d2: 5.0
+      # Auto-scaled landmark distance: zero target gap at 3 cm or closer,
+      # blending continuously back to ordinary tracking by 6 cm.
+      d1: 3.0
+      d2: 6.0
     middle:
       d1: 2.0
       d2: 5.0
