@@ -126,6 +126,7 @@ class Am200ActionComposer:
         self._unreachable_logged = False
         self._arm_velocity = np.zeros_like(self._arm_q)
         self._last_motion_ns: int | None = None
+        self._reanchor_after_return = False
 
         # Default teleop is first-frame relative follow. A calibration file is
         # optional absolute mapping for reproducible recording; absence is normal.
@@ -218,6 +219,10 @@ class Am200ActionComposer:
             self._pause_motion()
             return self._command(hand_action)
 
+        if self._reanchor_after_return:
+            self._anchor(wrist)
+            self._reanchor_after_return = False
+
         dt = 1.0 / 30.0
         if self._config.max_velocity_rad_s is not None:
             now = int(frame.timestamp_ns) if frame.timestamp_ns > 0 else time.monotonic_ns()
@@ -259,6 +264,15 @@ class Am200ActionComposer:
         self._engaged = False
         self._arm_velocity[:] = 0
         self._last_motion_ns = None
+
+    def reset_arm_position(self, position: np.ndarray) -> None:
+        """Synchronize IK after a separately commanded return; keep the data zero."""
+        position = np.asarray(position, dtype=float)
+        if position.shape != self._arm_q.shape or not np.isfinite(position).all():
+            raise ValueError('Returned arm position must contain three finite model angles')
+        self._arm_q = position.copy()
+        self.reset()
+        self._reanchor_after_return = True
 
     def _advance_arm(self, target: np.ndarray, dt: float) -> None:
         """Track IK with a damped second-order reference, not per-frame clipping.

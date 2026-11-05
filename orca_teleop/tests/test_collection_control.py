@@ -44,7 +44,7 @@ def test_discard_and_stop_do_not_mark_trial_successful(tmp_path, command):
 def test_initial_pose_can_only_be_saved_between_attempts(tmp_path):
     control = CollectionControl(tmp_path, threading.Event(), threading.Event())
     try:
-        for phase in ('connecting', 'recording', 'finalizing', 'parking'):
+        for phase in ('connecting', 'recording', 'finalizing', 'parking', 'returning'):
             control.update(phase=phase)
             assert not control.apply_command('save_arm_home')
         control.update(phase='ready')

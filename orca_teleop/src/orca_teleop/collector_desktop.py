@@ -460,11 +460,15 @@ def launch(collector):
             detail_var.set('시연을 마치면 성공 저장, 실패하면 실패 · 재시도를 누르세요.')
         elif phase == 'finalizing':
             detail_var.set('영상 프레임 수·시간 정보와 데이터를 확인해 저장하는 중입니다…')
+        elif phase == 'returning':
+            detail_var.set('저장된 팔 초기 자세로 복귀 중입니다. 복귀 후 왼손 핀치를 풀었다가 다시 잡으면 팔을 조작합니다. '
+                           + ('복귀가 끝나면 녹화를 시작합니다.' if state.get('return_reason') == 'record'
+                              else '복귀가 끝나면 다음 시연을 준비합니다.'))
         elif phase == 'ready':
             if state.get('arm_home_saved'):
                 detail_var.set('팔 초기 자세를 저장했습니다. 다음 연결과 세션 종료 시 이 자세로 복귀합니다.')
             else:
-                detail_var.set('텔레옵으로 자세를 준비하세요. 초기 자세를 저장하려면 왼손 핀치를 풀고 수집 설정의 저장 버튼을 누르세요.')
+                detail_var.set('녹화 시작·성공 저장 시 팔은 저장된 초기 자세로 복귀합니다. 복귀 후 왼손 핀치를 풀었다가 다시 잡으세요.')
         elif phase == 'parking':
             detail_var.set('팔을 저장한 초기 자세로 천천히 복귀시키고 있습니다. 복귀 후에도 팔의 힘은 유지됩니다.')
         else:

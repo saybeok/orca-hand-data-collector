@@ -299,6 +299,14 @@ class Am200HardwareSink(RecordableSink):
             raise RuntimeError('Arm is not connected')
         return self._arm.save_home_pose()
 
+    def return_arm_home(self) -> np.ndarray:
+        """Use the same taught motor pose and slow trajectory as session close."""
+        if self._arm is None:
+            raise RuntimeError('Arm is not connected')
+        position = self._arm.return_home()
+        self._target[self._map.arm_slice] = position
+        return position.copy()
+
     def run_loop(
         self,
         actions_q: queue.Queue[Any],

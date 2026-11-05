@@ -30,6 +30,9 @@ class FoldThreeFingersComposer:
         if self.composer is not None:
             self.composer.reset()
 
+    def reset_arm_position(self, position):
+        self.composer.reset_arm_position(position)
+
     def __call__(self, frame, hand_action):
         positions = dict(hand_action.data)
         positions.update(self.pose_deg)

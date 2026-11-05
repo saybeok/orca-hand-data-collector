@@ -258,6 +258,11 @@ class AmArmFeetech:
         if not (np.isfinite([velocity, acceleration]).all() and velocity > 0 and acceleration > 0):
             raise ValueError('Arm home velocity and acceleration must be positive and finite')
         distance = float(np.max(np.abs(target - start)))
+        if (distance <= math.radians(3) and self._last_motor_target is not None
+                and np.allclose(self._last_motor_target, target, rtol=0, atol=1e-6)):
+            # A Save followed by Record should not wait through a second
+            # empty trajectory when the servo is already holding this goal.
+            return
         duration = max(2.5, 1.5 * distance / velocity, math.sqrt(6 * distance / acceleration))
         steps = math.ceil(duration * 30)
         period = duration / steps
@@ -275,6 +280,8 @@ class AmArmFeetech:
                 raise RuntimeError(f'Arm did not reach initial pose (max error {math.degrees(error):.1f} deg)')
             time.sleep(0.05)
 
-    def return_home(self) -> None:
+    def return_home(self) -> np.ndarray:
         assert self._motor_home is not None
-        self._move_motor_pose(self._park_motor if self._park_motor is not None else self._motor_home)
+        target = self._park_motor if self._park_motor is not None else self._motor_home
+        self._move_motor_pose(target)
+        return (target - self._motor_home) / self._signs

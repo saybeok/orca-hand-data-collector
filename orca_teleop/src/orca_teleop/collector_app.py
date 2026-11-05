@@ -27,6 +27,7 @@ PHASES = {
     'recording': '녹화 중', 'finalizing': '저장·정리 중', 'stopping': '종료 중',
     'finished': '세션 종료', 'error': '확인 필요',
     'saving_home': '팔 초기 자세 저장 중', 'parking': '팔 초기 자세로 복귀 중',
+    'returning': '팔 초기 자세로 복귀 중',
 }
 
 

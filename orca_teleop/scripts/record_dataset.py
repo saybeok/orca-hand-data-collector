@@ -235,6 +235,26 @@ def _preview_observation(sink, control):
     return observation
 
 
+def _return_arm_for_collection(returner, control, mirror, queues, stop_event, reason):
+    """Return outside capture and require fresh commands before resuming."""
+    if stop_event.is_set():
+        return False
+    control.update(phase='returning', return_reason=reason, arm_home_saved=False)
+    returner.return_home()
+    mirror.reset()
+    drain_actions_queue(queues.actions_q, stop_event=stop_event, shutdown_sentinel=_SHUTDOWN)
+    if stop_event.is_set():
+        return False
+    if reason == 'save':
+        # The next trial has its own readiness gate. The final successful
+        # episode must also be able to finish after the operator removes VR.
+        return True
+    return wait_for_teleop_mirror_ready(
+        get_observation=lambda: _preview_observation(returner.sink, control),
+        mirror=mirror, stop_event=stop_event,
+    )
+
+
 def _stub_action_publisher(
     actions_q: "queue.Queue",
     stop_event: threading.Event,
@@ -875,6 +895,12 @@ def _main_record(argv: list[str]) -> None:
 
     rec_q: queue.Queue = queue.Queue(maxsize=64)
     episode_finalized_q: queue.Queue[bool] = queue.Queue(maxsize=1)
+    action_mirror = TeleopActionMirror()
+    dispatch_enabled = threading.Event()
+    arm_returner = None
+    if control and args.backend == 'am200_hw' and not args.no_arm:
+        from orca_teleop.am200.episode_return import ArmEpisodeReturn
+        arm_returner = ArmEpisodeReturn(sink, action_composer, dispatch_enabled)
 
     ingress_server: IngressServer | None = None
     retargeter_thread: threading.Thread | None = None
@@ -947,7 +973,7 @@ def _main_record(argv: list[str]) -> None:
                 "landmark_source": ("webxr" if args.source == "metaquest" else "mediapipe"),
                 "retargeter_config_path": args.retarget_config,
                 "retargeter_backend": args.retargeter,
-                "action_composer": action_composer,
+                "action_composer": arm_returner.compose if arm_returner else action_composer,
             },
             name="retargeter",
         )
@@ -962,8 +988,6 @@ def _main_record(argv: list[str]) -> None:
     )
     recorder_thread.start()
 
-    action_mirror = TeleopActionMirror()
-    dispatch_enabled = threading.Event()
     teleop_thread = threading.Thread(
         target=teleop_consumer_loop,
         args=(queues.actions_q,),
@@ -971,7 +995,8 @@ def _main_record(argv: list[str]) -> None:
             "mirror": action_mirror,
             "stop_event": stop_event,
             "shutdown_sentinel": _SHUTDOWN,
-            "dispatch_action": None if args.stub else sink.dispatch_action,
+            "dispatch_action": (None if args.stub else
+                                arm_returner.dispatch if arm_returner else sink.dispatch_action),
             "dispatch_enabled": dispatch_enabled,
         },
         name="teleop-consumer",
@@ -988,7 +1013,8 @@ def _main_record(argv: list[str]) -> None:
 
     if control:
         logger.info('Desktop collector: Record starts an episode; Save keeps it; '
-                    'Discard/Stop drops the unfinished attempt. auto_home=%s', args.auto_home)
+                    'Discard/Stop drops the unfinished attempt. arm_button_returns=%s; auto_home=%s',
+                    arm_returner is not None, args.auto_home)
     elif use_keyboard:
         logger.info(
             "Recording up to %d episode(s). From episode 2 onward: go_home()"
@@ -1021,7 +1047,7 @@ def _main_record(argv: list[str]) -> None:
             if quest_reset_event is not None:
                 quest_reset_event.set()
             if action_composer is not None:
-                action_composer.reset()
+                (arm_returner or action_composer).reset()
 
             if attempt_idx > 1 and args.auto_home and not args.stub:
                 logger.info("Resetting robot to home position...")
@@ -1077,6 +1103,9 @@ def _main_record(argv: list[str]) -> None:
                         if not stop_event.is_set():
                             control.update(phase='ready', arm_home_saved=True)
                 if stop_event.is_set():
+                    break
+                if arm_returner and not _return_arm_for_collection(
+                        arm_returner, control, action_mirror, queues, stop_event, 'record'):
                     break
                 control.update(phase='recording')
 
@@ -1154,6 +1183,9 @@ def _main_record(argv: list[str]) -> None:
                 ep_idx += 1
                 if control:
                     control.update(saved=ep_idx)
+                if arm_returner and not _return_arm_for_collection(
+                        arm_returner, control, action_mirror, queues, stop_event, 'save'):
+                    break
             elif n_frames > 0:
                 logger.info("Discarding episode %d before continuing...", ep_idx + 1)
                 rec_q.put(_DISCARD_EPISODE)

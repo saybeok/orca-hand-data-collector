@@ -126,6 +126,35 @@ def test_changed_motor_mapping_rejects_taught_pose_before_connect(setup_arm):
     assert len(clients) == 1
 
 
+def test_return_reports_saved_pose_in_existing_dataset_coordinates(setup_arm):
+    config, clients = setup_arm
+    arm = AmArmFeetech(config)
+    arm.connect()
+    zero = arm._motor_home.copy()
+    clients[0].positions = zero + np.array([-.4, .8, .2])
+    arm.save_home_pose()
+    clients[0].positions = zero + .1
+    np.testing.assert_allclose(arm.return_home(), [.4, .8, .2], atol=1e-6)
+    np.testing.assert_array_equal(arm._motor_home, zero)
+    arm.disconnect(disable_torque=False)
+
+
+def test_return_does_not_repeat_an_already_completed_trajectory(setup_arm):
+    config, clients = setup_arm
+    arm = AmArmFeetech(config)
+    arm.connect()
+    writes_before = len([c for c in clients[0].calls if isinstance(c, tuple) and c[0] == 'write'])
+    arm.return_home()
+    writes_after = len([c for c in clients[0].calls if isinstance(c, tuple) and c[0] == 'write'])
+    assert writes_after == writes_before
+    # Measured drift beyond the existing arrival tolerance still needs a return.
+    clients[0].positions += .1
+    arm.return_home()
+    writes_final = len([c for c in clients[0].calls if isinstance(c, tuple) and c[0] == 'write'])
+    assert writes_final > writes_after
+    arm.disconnect(disable_torque=False)
+
+
 @pytest.mark.parametrize('return_fails', [False, True])
 def test_shutdown_returns_before_disconnect_and_preserves_torque(return_fails):
     calls = []
