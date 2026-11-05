@@ -293,6 +293,11 @@ def launch(collector):
         entry = ttk.Entry(row, textvariable=variable, width=7)
         entry.pack(side='right')
         fields.append(entry)
+    arm_home_button = ttk.Button(collection_tab, text='현재 팔을 초기 자세로 저장',
+                                 command=lambda: command('save_arm_home'))
+    arm_home_button.pack(fill='x', pady=(14, 4))
+    ttk.Label(collection_tab, text='녹화 대기에서 팔을 몸체 쪽으로 접고\n왼손 핀치를 푼 뒤 저장하세요.\n다음 연결·종료 때 이 자세로 복귀합니다.\n종료 후에도 팔을 지탱하는 힘은 유지합니다.',
+              style='Muted.TLabel', wraplength=280, justify='left').pack(anchor='w', pady=(0, 8))
     ttk.Separator(collection_tab).pack(fill='x', pady=16)
     ttk.Label(collection_tab, text='데이터 저장 위치', font=font(11, True)).pack(anchor='w')
     folder_entry = ttk.Entry(collection_tab, textvariable=folder_var)
@@ -429,11 +434,12 @@ def launch(collector):
         for field in fields:
             field.configure(state='disabled' if active or busy[0] else 'normal')
         choose_button.configure(state='disabled' if active or busy[0] else 'normal')
+        arm_home_button.configure(state='normal' if active and phase == 'ready' and not collector.demo else 'disabled')
         for key in ('record', 'save', 'discard', 'stop'):
             allowed = active and (key == 'stop' or (key == 'record' and phase == 'ready')
                                  or (key in ('save', 'discard') and phase == 'recording'))
             buttons[key].configure(state='normal' if allowed else 'disabled')
-        if closing[0]:
+        if closing[0] and phase != 'parking':
             detail_var.set('미저장 시도를 폐기하고 데이터를 정리하는 중입니다…')
         elif state.get('error'):
             detail_var.set(state['error'].splitlines()[0][:180] + '  ·  자세한 내용은 로그에서 확인하세요.')
@@ -444,7 +450,12 @@ def launch(collector):
         elif phase == 'recording':
             detail_var.set('시연을 마치면 성공 저장, 실패하면 실패 · 재시도를 누르세요.')
         elif phase == 'ready':
-            detail_var.set('텔레옵으로 자세·카드를 준비한 뒤 녹화 시작을 누르세요. 현재는 기록하지 않습니다.')
+            if state.get('arm_home_saved'):
+                detail_var.set('팔 초기 자세를 저장했습니다. 다음 연결과 세션 종료 시 이 자세로 복귀합니다.')
+            else:
+                detail_var.set('텔레옵으로 자세를 준비하세요. 초기 자세를 저장하려면 왼손 핀치를 풀고 수집 설정의 저장 버튼을 누르세요.')
+        elif phase == 'parking':
+            detail_var.set('팔을 저장한 초기 자세로 천천히 복귀시키고 있습니다. 복귀 후에도 팔의 힘은 유지됩니다.')
         else:
             detail_var.set('카메라 구도를 확인한 뒤 텔레옵을 연결하세요. 영상은 창 크기에 맞춰 표시됩니다.')
         detail_label.configure(wraplength=max(600, outer.winfo_width() - 20))

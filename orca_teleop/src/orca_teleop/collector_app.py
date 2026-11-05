@@ -26,6 +26,7 @@ PHASES = {
     'ready': '텔레옵 가능 · 녹화 대기', 'starting': '녹화 시작 중',
     'recording': '녹화 중', 'finalizing': '저장·정리 중', 'stopping': '종료 중',
     'finished': '세션 종료', 'error': '확인 필요',
+    'saving_home': '팔 초기 자세 저장 중', 'parking': '팔 초기 자세로 복귀 중',
 }
 
 
@@ -305,7 +306,10 @@ class Collector:
         state = self.status()
         if not state['active'] or not self.control_dir:
             raise ValueError('먼저 텔레옵을 연결해 주세요.')
-        allowed = {'record': ('ready',), 'save': ('recording',), 'discard': ('recording',)}
+        allowed = {'record': ('ready',), 'save': ('recording',), 'discard': ('recording',),
+                   'save_arm_home': ('ready',)}
+        if command == 'save_arm_home' and self.demo:
+            raise ValueError('UI 시험 모드에서는 실제 팔 자세를 저장할 수 없습니다.')
         if command != 'stop' and state['phase'] not in allowed.get(command, ()):
             raise ValueError('현재 단계에서는 이 버튼을 사용할 수 없습니다.')
         send_command(self.control_dir, command)

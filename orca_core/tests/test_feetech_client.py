@@ -146,6 +146,18 @@ def _expected_pos(client: FeetechClient, raw: int) -> float:
     return FeetechClient._raw_to_rad(raw, client.pos_scale)
 
 
+@pytest.mark.parametrize('disable_torque', [False, True])
+def test_disconnect_closes_port_and_only_releases_torque_when_requested(client, disable_torque):
+    feetech, handler = client
+    closed = []
+    feetech.port_handler = SimpleNamespace(is_using=False, closePort=lambda: closed.append(True))
+    feetech.OPEN_CLIENTS.add(feetech)
+    feetech.disconnect(disable_torque=disable_torque)
+    assert closed == [True]
+    assert not feetech._connected and feetech not in feetech.OPEN_CLIENTS
+    assert ('write1' in handler.log) == disable_torque
+
+
 def test_full_sync_read_reports_ok(client):
     feetech, _ = client
     read = feetech.read_position_velocity_current()

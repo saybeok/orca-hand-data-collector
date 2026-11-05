@@ -86,6 +86,9 @@ class Am200HardwareSink(RecordableSink):
     ) -> None:
         self._hand_config_path = hand_config_path
         self._arm_config_path = Path(arm_config_path) if arm_config_path else default_arm_config_path()
+        arm_config = load_arm_config(self._arm_config_path)
+        self._return_home_on_close = bool(arm_config.get('return_home_on_close', False))
+        self._hold_on_disconnect = bool(arm_config.get('hold_on_disconnect', False))
         self._arm_max_step_rad = arm_max_step_rad
         self._model_path = resolve_model_path(model_path)
         self._enable_arm = enable_arm
@@ -122,23 +125,32 @@ class Am200HardwareSink(RecordableSink):
         self._map = CanonicalJointMap.load(joint_map_path, model)
         self._target = np.zeros(self._map.dof, dtype=np.float64)
 
-        if self._enable_hand:
-            hand = OrcaHand(str(self._hand_config_path))
-            ok, msg = connect_orca_hand(hand)
-            if not ok:
-                raise RuntimeError(f"hand connect failed: {msg}")
-            _enable_sync_hand_writes(hand)
-            hand.init_joints()
-            self._hand = hand
-            self._target[self._map.hand_slice] = self._map.hand_from_physical(self.home_position())
+        try:
+            # Hold/position the loaded arm before hand initialization or camera waits.
+            if self._enable_arm:
+                arm = AmArmFeetech(self._arm_config_path, max_step_rad=self._arm_max_step_rad)
+                arm.connect()
+                self._arm = arm
 
-        if self._enable_arm:
-            arm = AmArmFeetech(self._arm_config_path, max_step_rad=self._arm_max_step_rad)
-            arm.connect()
-            self._arm = arm
+            if self._enable_hand:
+                hand = OrcaHand(str(self._hand_config_path))
+                ok, msg = connect_orca_hand(hand)
+                if not ok:
+                    raise RuntimeError(f"hand connect failed: {msg}")
+                self._hand = hand
+                _enable_sync_hand_writes(hand)
+                hand.init_joints()
+                self._target[self._map.hand_slice] = self._map.hand_from_physical(self.home_position())
 
-        self._cameras.open()
-        self._cameras.ensure_live()
+            self._cameras.open()
+            self._cameras.ensure_live()
+        except BaseException:
+            # A failed camera/hand setup must leave the arm held, without another move.
+            try:
+                self.close(return_home=False)
+            except Exception:
+                logger.exception('Cleanup after hardware connection failure')
+            raise
         logger.info(
             "Am200HardwareSink connected: arm=%s hand=%s dof=%d",
             self._enable_arm,
@@ -280,6 +292,11 @@ class Am200HardwareSink(RecordableSink):
             self._apply()
             time.sleep(1.0 / hz)
 
+    def save_arm_home(self) -> dict:
+        if self._arm is None:
+            raise RuntimeError('Arm is not connected')
+        return self._arm.save_home_pose()
+
     def run_loop(
         self,
         actions_q: queue.Queue[Any],
@@ -306,16 +323,33 @@ class Am200HardwareSink(RecordableSink):
             logger.warning("No action for %.1fs — holding last target", idle_s)
             self._stale_logged = True
 
-    def close(self) -> None:
-        try:
-            self._cameras.close()
-            if self._hand is not None:
-                self._hand.disable_torque()
-                self._hand.disconnect()
-            if self._arm is not None:
-                self._arm.disconnect(disable_torque=True)
-        except Exception:
-            logger.exception("Am200HardwareSink.close() error")
-        finally:
-            self._hand = None
-            self._arm = None
+    def close(self, *, return_home: bool | None = None) -> None:
+        errors = []
+        return_failed = False
+        park = self._return_home_on_close if return_home is None else return_home
+        if self._arm is not None and park:
+            try:
+                self._arm.return_home()
+            except BaseException as exc:
+                logger.exception('Arm return failed; keeping torque enabled')
+                return_failed = True
+                errors.append(exc)
+                try:
+                    self._arm.hold_current()
+                except Exception:
+                    logger.exception('Could not refresh arm hold; preserving the last servo target')
+        for operation in (
+            self._cameras.close,
+            *((self._hand.disable_torque, self._hand.disconnect) if self._hand is not None else ()),
+            *((lambda: self._arm.disconnect(disable_torque=not (self._hold_on_disconnect or return_failed)),)
+              if self._arm is not None else ()),
+        ):
+            try:
+                operation()
+            except Exception as exc:
+                logger.exception('Hardware close failed')
+                errors.append(exc)
+        self._hand = None
+        self._arm = None
+        if errors:
+            raise RuntimeError(f'팔 복귀/연결 종료를 확인해 주세요: {errors[0]}') from errors[0]

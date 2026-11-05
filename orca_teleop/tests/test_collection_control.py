@@ -41,6 +41,24 @@ def test_discard_and_stop_do_not_mark_trial_successful(tmp_path, command):
         control.close()
 
 
+def test_initial_pose_can_only_be_saved_between_attempts(tmp_path):
+    control = CollectionControl(tmp_path, threading.Event(), threading.Event())
+    try:
+        for phase in ('connecting', 'recording', 'finalizing', 'parking'):
+            control.update(phase=phase)
+            assert not control.apply_command('save_arm_home')
+        control.update(phase='ready')
+        assert control.apply_command('save_arm_home')
+        assert control.save_arm_home_event.is_set()
+        assert json.loads((tmp_path / 'status.json').read_text())['phase'] == 'saving_home'
+        assert not control.apply_command('record')
+        assert not control.apply_command('save_arm_home')
+        assert control.apply_command('stop')
+        assert control.stop_event.is_set()
+    finally:
+        control.close()
+
+
 def test_file_commands_are_consumed_and_error_survives_finish(tmp_path):
     control = CollectionControl(tmp_path, threading.Event(), threading.Event())
     try:

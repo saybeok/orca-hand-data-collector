@@ -810,12 +810,14 @@ def _main_record(argv: list[str]) -> None:
         }
         if args.hand_config:
             paths['calibration'] = str(Path(args.hand_config).with_name('calibration.yaml'))
+        arm = getattr(sink, '_arm', None)
+        if arm is not None and arm._home_pose_path is not None:
+            paths['arm_home'] = str(arm._home_pose_path)
         for key, value in paths.items():
             if value and Path(value).is_file():
                 content = Path(value).read_bytes()
                 configuration[key] = {'sha256': hashlib.sha256(content).hexdigest(), 'path': value}
                 shutil.copyfile(value, dataset.root / f'collection_{key}{Path(value).suffix}')
-        arm = getattr(sink, '_arm', None)
         arm_reference = None if arm is None else {
             'motor_home_rad': arm._motor_home.tolist(),
             'joint_signs': arm._signs.tolist(),
@@ -1026,6 +1028,13 @@ def _main_record(argv: list[str]) -> None:
                 control.update(phase='ready')
                 while not stop_event.is_set() and not control.start_event.wait(0.1):
                     _preview_observation(sink, control)
+                    if control.save_arm_home_event.is_set():
+                        control.save_arm_home_event.clear()
+                        pose = sink.save_arm_home()
+                        from orca_teleop.collection_control import atomic_json
+                        atomic_json(dataset.root / 'collection_arm_home.json', pose)
+                        if not stop_event.is_set():
+                            control.update(phase='ready', arm_home_saved=True)
                 if stop_event.is_set():
                     break
                 control.update(phase='recording')
@@ -1170,9 +1179,19 @@ def _main_record(argv: list[str]) -> None:
             except Exception:
                 logger.exception("Failed to push to hub")
 
-        sink.close()
-        if control:
-            control.finish(saved=dataset.num_episodes)
+        if control and args.backend == 'am200_hw' and not args.no_arm:
+            control.update(phase='parking' if control._state['phase'] != 'error' else 'error')
+        try:
+            sink.close()
+        except Exception as exc:
+            logger.exception('Hardware shutdown failed')
+            if control:
+                control.update(phase='error', error=str(exc))
+            else:
+                raise
+        finally:
+            if control:
+                control.finish(saved=dataset.num_episodes)
 
 
 def main() -> None:

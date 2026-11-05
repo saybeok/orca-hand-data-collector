@@ -26,3 +26,10 @@ default_speed: 1500
 # Soft per-command step cap from the captured home (rad).
 # null = no software clip (IK / servo stops still apply).
 max_step_from_home_rad: null
+
+# Teach once via the collector's "현재 팔을 초기 자세로 저장" button (녹화 대기).
+home_pose_file: ../../data/arm_home/initial_pose.json
+home_velocity_deg_s: 15
+home_acceleration_deg_s2: 45
+return_home_on_close: true
+hold_on_disconnect: true

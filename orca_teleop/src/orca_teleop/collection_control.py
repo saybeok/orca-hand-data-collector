@@ -35,6 +35,7 @@ class CollectionControl:
         self.advance_event = advance_event
         self.start_event = threading.Event()
         self.discard_event = threading.Event()
+        self.save_arm_home_event = threading.Event()
         self._closed = threading.Event()
         self._lock = threading.RLock()
         self._state = {'phase': 'connecting', 'saved': 0, 'frames': 0, 'seconds': 0}
@@ -72,6 +73,10 @@ class CollectionControl:
             if command == 'record' and phase == 'ready':
                 self.update(phase='starting')
                 self.start_event.set()
+                return True
+            if command == 'save_arm_home' and phase == 'ready':
+                self.update(phase='saving_home')
+                self.save_arm_home_event.set()
                 return True
             if command in ('save', 'discard') and phase == 'recording':
                 if command == 'discard':

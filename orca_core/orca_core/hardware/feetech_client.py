@@ -236,12 +236,14 @@ class FeetechClient(MotorClient):
                     pass
                 raise
 
-    def disconnect(self) -> None:
+    def disconnect(self, *, disable_torque: bool = True) -> None:
         """Disconnects from the Feetech motors.
 
         The port is always closed and the client deregistered, even when the
         final torque-disable raises (e.g. the serial link is already gone);
         that exception propagates after cleanup.
+        ``disable_torque=False`` closes the serial port while leaving the last
+        servo target active, for an explicitly requested loaded-arm hold.
         """
         if not self._connected:
             return
@@ -253,7 +255,8 @@ class FeetechClient(MotorClient):
         with self._bus_lock:
             try:
                 # Disable torque before disconnecting
-                self.set_torque_enabled(self.motor_ids, False, retries=0)
+                if disable_torque:
+                    self.set_torque_enabled(self.motor_ids, False, retries=0)
             finally:
                 self.port_handler.closePort()
                 self._connected = False
