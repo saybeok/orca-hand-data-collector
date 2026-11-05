@@ -318,11 +318,12 @@ def launch(collector):
     choose_button = ttk.Button(folder_buttons, text='폴더 변경', command=choose_folder)
     choose_button.pack(side='left')
     def open_folder():
-        path = collector.dataset_root or Path(folder_var.get())
+        converted = collector.status().get('dataset_root')
+        path = Path(converted) if converted else collector.dataset_root or Path(folder_var.get())
         if path.exists():
             subprocess.Popen(['xdg-open', str(path)])
     ttk.Button(folder_buttons, text='저장 위치 열기', command=open_folder).pack(side='right')
-    ttk.Label(collection_tab, text='성공 저장만 횟수에 포함됩니다.\n실패와 종료 시 미저장 시도는 폐기합니다.\n시도 사이에는 직접 자세·물체를 정리하세요.',
+    ttk.Label(collection_tab, text='성공 저장은 수집본을 보관합니다.\n수집 종료 후 LeRobot 일괄 변환을 누르세요.\n실패와 종료 시 미저장 시도는 폐기합니다.',
               style='Muted.TLabel', wraplength=280, justify='left').pack(anchor='w', pady=16)
 
     for name in CAMERAS:
@@ -410,6 +411,14 @@ def launch(collector):
             collector.command(name)
         except ValueError as exc:
             messagebox.showinfo('수집 상태', str(exc))
+    def convert():
+        path = filedialog.askdirectory(title='변환할 수집 세션 또는 상위 폴더 선택',
+                                       initialdir=folder_var.get())
+        if path:
+            collector.error = ''
+            run_background(lambda: collector.convert(Path(path)))
+    buttons['convert'] = ttk.Button(setup, text='LeRobot 일괄 변환', command=convert)
+    buttons['convert'].grid(row=2, column=0, columnspan=2, sticky='ew', pady=(6, 0))
     for key, label, callback, button_style in (
         ('record', '● 녹화 시작', lambda: command('record'), 'Record.TButton'),
         ('save', '✓ 성공 저장', lambda: command('save'), 'Save.TButton'),
@@ -445,21 +454,30 @@ def launch(collector):
         choose_button.configure(state='disabled' if active or busy[0] else 'normal')
         arm_home_button.configure(state='normal' if active and phase == 'ready' and not collector.demo else 'disabled')
         for key in ('record', 'save', 'discard', 'stop'):
-            allowed = active and (key == 'stop' or (key == 'record' and phase == 'ready')
+            allowed = active and phase != 'converting' and (key == 'stop' or (key == 'record' and phase == 'ready')
                                  or (key in ('save', 'discard') and phase == 'recording'))
             buttons[key].configure(state='normal' if allowed else 'disabled')
-        if closing[0] and phase != 'parking':
+        buttons['convert'].configure(state='disabled' if active or busy[0] else 'normal')
+        if closing[0] and phase not in ('parking', 'converting'):
             detail_var.set('미저장 시도를 폐기하고 데이터를 정리하는 중입니다…')
         elif state.get('error'):
             detail_var.set(state['error'].splitlines()[0][:180] + '  ·  자세한 내용은 로그에서 확인하세요.')
-        elif collector.demo:
-            detail_var.set('UI 시험 전용 · 모터와 카메라를 사용하지 않으며 더미 관절값만 저장합니다.')
         elif phase in ('connecting', 'warming_up'):
             detail_var.set('Quest Browser: http://localhost:8765 → Start hand tracking · 오른손을 보이게 해주세요.')
         elif phase == 'recording':
             detail_var.set('시연을 마치면 성공 저장, 실패하면 실패 · 재시도를 누르세요.')
         elif phase == 'finalizing':
-            detail_var.set('영상 프레임 수·시간 정보와 데이터를 확인해 저장하는 중입니다…')
+            detail_var.set('수집본과 관절 데이터를 저장하는 중입니다. LeRobot 영상 변환은 수집 후 별도로 실행합니다.')
+        elif phase == 'converting':
+            detail_var.set(f'세션 {state.get("session", 1)}/{state.get("sessions", 1)} · '
+                           f'시연 {state.get("episode", 0)}/{state.get("total", 0)} · '
+                           f'{state.get("frames", 0)}/{state.get("episode_frames", 0)} 프레임 변환 중. 원본은 유지됩니다.')
+        elif phase == 'converted':
+            detail_var.set('LeRobot 변환 완료. 저장 위치 열기로 결과를 확인하세요. 수집 원본도 그대로 보관했습니다.')
+        elif phase == 'finished':
+            detail_var.set('수집을 끝냈습니다. LeRobot 일괄 변환을 누르고 수집 폴더를 선택하세요.')
+        elif collector.demo:
+            detail_var.set('UI 시험 전용 · 모터와 카메라를 사용하지 않으며 더미 관절값만 저장합니다.')
         elif phase == 'returning':
             detail_var.set('저장된 팔 초기 자세로 복귀 중입니다. 복귀 후 왼손 핀치를 풀었다가 다시 잡으면 팔을 조작합니다. '
                            + ('복귀가 끝나면 녹화를 시작합니다.' if state.get('return_reason') == 'record'
@@ -504,10 +522,14 @@ def launch(collector):
         if closing[0]:
             return
         if collector.active():
-            if not messagebox.askyesno('수집 종료', '현재 미저장 시도는 폐기하고 세션을 종료할까요?'):
+            converting = collector.status()['phase'] == 'converting'
+            prompt = ('변환이 끝난 뒤 창을 닫을까요?' if converting else
+                      '현재 미저장 시도는 폐기하고 세션을 종료할까요?')
+            if not messagebox.askyesno('수집 종료', prompt):
                 return
             closing[0] = True
-            collector.command('stop')
+            if not converting:
+                collector.command('stop')
             def wait_closed():
                 if collector.active():
                     app.after(250, wait_closed)
@@ -531,5 +553,5 @@ def launch(collector):
         app.mainloop()
     finally:
         collector.close_preview()
-        if collector.active():
+        if collector.active() and collector.status()['phase'] not in ('converting', 'converted'):
             collector.command('stop')

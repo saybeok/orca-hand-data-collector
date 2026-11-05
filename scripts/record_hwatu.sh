@@ -68,6 +68,8 @@ echo "Quest Browser: http://localhost:8765 → Start hand tracking"
 echo "Left pinch: arm clutch. SPACE: save/next. q/Esc: save current episode and finish."
 echo "From episode 2, the robot returns home automatically before recording."
 echo "Dataset: $dataset_root"
+echo "Collection uses JPEG-95 capture files. After collection, convert to LeRobot:"
+echo "orca_teleop/.venv/bin/python orca_teleop/scripts/convert_recordings.py --source $dataset_root"
 
 exec "$python_bin" orca_teleop/scripts/record_dataset.py \
   --backend am200_hw --local --source metaquest --hand right \

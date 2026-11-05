@@ -298,6 +298,12 @@ def _stub_action_publisher(
 
 def _create_recording_dataset(dataset_class, *, repo_id, fps, features, root,
                               video_storage='streaming'):
+    if video_storage == 'deferred':
+        from orca_teleop.deferred_recording import DeferredCapture
+        dataset = DeferredCapture(repo_id=repo_id, fps=fps, features=features,
+                                  root=root or _default_lerobot_root(repo_id))
+        logger.info('Video storage: deferred JPEG quality 95; LeRobot conversion after collection.')
+        return dataset
     camera_count = sum(ft['dtype'] in ('image', 'video') for ft in features.values())
     streaming = video_storage == 'streaming' and any(ft['dtype'] == 'video' for ft in features.values())
     image_count = sum(ft['dtype'] == 'image' for ft in features.values()) if streaming else camera_count
@@ -332,6 +338,10 @@ def _check_image_writer_backlog(dataset):
 
 def _validate_recorded_images(dataset):
     """Catch swallowed LeRobot PNG write failures before committing episode metadata."""
+    from orca_teleop.deferred_recording import DeferredCapture
+    if isinstance(dataset, DeferredCapture):
+        dataset.prepare_episode()
+        return
     encoder = getattr(dataset, '_streaming_encoder', None)
     if encoder is not None:
         encoder.prepare_episode(expected_frames=dataset.episode_buffer['size'])
@@ -361,6 +371,10 @@ def _validate_recorded_images(dataset):
 
 
 def _discard_recording_episode(dataset):
+    from orca_teleop.deferred_recording import DeferredCapture
+    if isinstance(dataset, DeferredCapture):
+        dataset.clear_episode_buffer()
+        return
     writer = getattr(dataset, 'image_writer', None)
     if writer is not None:
         writer.wait_until_done()
@@ -435,7 +449,12 @@ def _recorder_loop(
             continue
         try:
             _check_image_writer_backlog(dataset)
+            started = time.perf_counter()
             dataset.add_frame(item)
+            elapsed = time.perf_counter() - started
+            if rec_q.qsize() >= 32 and elapsed > .03:
+                logger.warning('Recording backlog: %d/64 frames; last add_frame %.1f ms; storage=%s',
+                               rec_q.qsize(), elapsed * 1000, type(dataset).__name__)
         except Exception:
             logger.exception("Failed to add frame")
             episode_failed = True
@@ -458,8 +477,9 @@ def _main_record(argv: list[str]) -> None:
                         help='Hold middle/ring/pinky folded; keep thumb/index/wrist teleoperated.')
     parser.add_argument('--hand-feedback-debug', action=argparse.BooleanOptionalAction, default=True,
                         help='am200_hw: log commanded and motor-derived hand angles once per second.')
-    parser.add_argument('--video-storage', choices=('streaming', 'images'), default='streaming',
-                        help='Encode H.264 during recording (default), or retain the PNG/AV1 path.')
+    parser.add_argument('--video-storage', choices=('deferred', 'streaming', 'images'), default='deferred',
+                        help='Save lightweight captures for later LeRobot conversion (default), '
+                             'or encode H.264 live / use PNG images.')
     parser.add_argument('--control-dir', type=Path, default=None,
                         help='Local desktop collector control/preview directory (no TTY needed).')
     parser.add_argument('--auto-home', action=argparse.BooleanOptionalAction, default=True,
@@ -1159,7 +1179,8 @@ def _main_record(argv: list[str]) -> None:
                     rec_q.put_nowait(frame)
                     n_frames += 1
                 except queue.Full:
-                    raise RuntimeError('디스크·영상 저장 속도가 부족해 녹화가 밀렸습니다. 현재 시도를 폐기합니다.')
+                    raise RuntimeError('녹화 저장 대기열이 가득 찼습니다 (CPU·저장 처리 지연). '
+                                       '현재 시도를 폐기합니다. 자세한 처리 시간은 로그를 확인하세요.')
 
                 ticker.tick()
                 if control and time.perf_counter() - last_ui_update >= 0.25:
@@ -1244,7 +1265,10 @@ def _main_record(argv: list[str]) -> None:
             num_eps = "?"
         logger.info("Dataset now contains %s episode(s) at %s", num_eps, dataset.root)
 
-        if args.push_to_hub:
+        if args.push_to_hub and args.video_storage == 'deferred':
+            logger.warning('Deferred captures must be converted to LeRobot before uploading. '
+                           'Run scripts/convert_recordings.py --source %s', dataset.root)
+        elif args.push_to_hub:
             try:
                 logger.info("Pushing %s to the Hugging Face Hub...", args.repo_id)
                 dataset.push_to_hub()

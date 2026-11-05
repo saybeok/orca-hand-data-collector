@@ -28,6 +28,7 @@ PHASES = {
     'finished': '세션 종료', 'error': '확인 필요',
     'saving_home': '팔 초기 자세 저장 중', 'parking': '팔 초기 자세로 복귀 중',
     'returning': '팔 초기 자세로 복귀 중',
+    'converting': 'LeRobot 일괄 변환 중', 'converted': 'LeRobot 변환 완료',
 }
 
 
@@ -272,6 +273,7 @@ class Collector:
                    '--arm-max-velocity-deg-s', str(s['velocity']),
                    '--arm-max-acceleration-deg-s2', str(s['acceleration']),
                    '--fps', '30', '--episode-end', 'space', '--no-auto-home', '--rest-seconds', '0',
+                   '--video-storage', 'deferred',
                    '--num-episodes', str(s['target']), '--task', s['task'],
                    '--repo-id', f'local/{self.dataset_root.name}', '--root', str(self.dataset_root),
                    '--control-dir', str(self.control_dir)]
@@ -283,6 +285,28 @@ class Collector:
         for spec in specs:
             command += ['--camera', spec]
         return command
+
+    def convert(self, source):
+        if self.active():
+            raise ValueError('세션 종료가 끝난 뒤 변환해 주세요.')
+        from orca_teleop.deferred_recording import capture_roots
+        if not capture_roots(Path(source)):
+            raise ValueError('선택한 폴더에 성공 저장된 수집본이 없습니다.')
+        self.close_preview()
+        self.error = ''
+        self.control_dir = self.config_dir / 'conversions' / uuid.uuid4().hex
+        self.control_dir.mkdir(parents=True)
+        command = [str(self.root / 'orca_teleop/.venv/bin/python'),
+                   str(self.root / 'orca_teleop/scripts/convert_recordings.py'),
+                   '--source', str(source), '--control-dir', str(self.control_dir)]
+        env = dict(os.environ, PYTHONUNBUFFERED='1')
+        env.pop('PYTHONPATH', None)
+        env.pop('LD_LIBRARY_PATH', None)
+        self.process = subprocess.Popen(command, cwd=self.root, env=env,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            start_new_session=True, text=True, bufsize=1)
+        self.phase = 'converting'
+        threading.Thread(target=self._read_output, args=(self.process, self.control_dir), daemon=True).start()
 
     def _read_output(self, process, directory):
         with (directory / 'recorder.log').open('w', encoding='utf-8') as log:
@@ -301,7 +325,7 @@ class Collector:
         if self.process is not None and self.process.poll() is not None:
             if self.process.returncode:
                 state.update(phase='error', error=self.error or '\n'.join(list(self.logs)[-8:]))
-            elif state['phase'] not in ('finished', 'error'):
+            elif state['phase'] not in ('finished', 'converted', 'error'):
                 state['phase'] = 'finished'
         if self.error:
             state.update(phase='error', error=self.error)
@@ -313,6 +337,8 @@ class Collector:
             self._cancel.set()
             return
         state = self.status()
+        if state['phase'] == 'converting':
+            raise ValueError('LeRobot 변환이 끝날 때까지 기다려 주세요. 수집 원본은 유지됩니다.')
         if not state['active'] or not self.control_dir:
             raise ValueError('먼저 텔레옵을 연결해 주세요.')
         allowed = {'record': ('ready',), 'save': ('recording',), 'discard': ('recording',),
