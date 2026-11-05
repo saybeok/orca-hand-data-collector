@@ -141,18 +141,34 @@ def test_settings_survive_project_relocation_without_serial_device_changes(tmp_p
 
 
 @pytest.mark.parametrize('demo', [False, True])
-@pytest.mark.parametrize('task', ['Flip over the hwatu card.', 'my custom task'])
+@pytest.mark.parametrize('task', ['Flip over the hwatu card.', 'move the hwatu card.', 'my custom task'])
 def test_task_default_migration_preserves_custom_instructions_and_camera_roles(tmp_path, demo, task):
     collector = Collector(tmp_path, demo=demo)
-    assert collector.settings['task'] == 'move the hwatu card.'
+    assert collector.settings['task'] == 'move the eclipse case'
     sources = {'bottom': 'usb=1-1.3', 'wrist': 'usb=1-1.4', 'realsense': 'serial=rs'}
     collector.save_settings(dict(collector.settings, task=task, sources=sources))
     reloaded = Collector(tmp_path, demo=demo)
-    expected = 'move the hwatu card.' if task == 'Flip over the hwatu card.' else task
+    expected = 'my custom task' if task == 'my custom task' else 'move the eclipse case'
     assert reloaded.settings['task'] == expected
     persisted = json.loads(reloaded.settings_path.read_text())
     assert persisted['task'] == expected
     assert persisted['sources'] == sources
+
+
+@pytest.mark.parametrize('demo', [False, True])
+@pytest.mark.parametrize('enabled', [False, True])
+def test_fixed_fingers_option_is_persisted_and_passed_only_to_live_sessions(tmp_path, demo, enabled):
+    collector = Collector(tmp_path, demo=demo)
+    assert collector.settings['fold_three_fingers'] is False
+    collector.save_settings(dict(collector.settings, fold_three_fingers=enabled))
+    reloaded = Collector(tmp_path, demo=demo)
+    assert reloaded.settings['fold_three_fingers'] is enabled
+    reloaded.dataset_root, reloaded.control_dir = tmp_path / 'dataset', tmp_path / 'controls'
+    command = reloaded.build_command([])
+    assert ('--fold-three-fingers' in command) == (enabled and not demo)
+    assert command[command.index('--task') + 1] == 'move the eclipse case'
+    with pytest.raises(ValueError, match='체크'):
+        reloaded.save_settings(dict(reloaded.settings, fold_three_fingers='false'))
 
 
 def test_frame_write_failure_discards_episode_instead_of_counting_success():

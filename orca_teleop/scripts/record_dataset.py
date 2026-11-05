@@ -412,6 +412,8 @@ def _main_record(argv: list[str]) -> None:
     )
     parser.add_argument("--repo-id", required=True, help="LeRobotDataset repo id")
     parser.add_argument("--task", required=True, help="Task description for every episode")
+    parser.add_argument('--fold-three-fingers', action='store_true',
+                        help='Hold middle/ring/pinky folded; keep thumb/index/wrist teleoperated.')
     parser.add_argument('--control-dir', type=Path, default=None,
                         help='Local desktop collector control/preview directory (no TTY needed).')
     parser.add_argument('--auto-home', action=argparse.BooleanOptionalAction, default=True,
@@ -767,6 +769,14 @@ def _main_record(argv: list[str]) -> None:
                 f"--hand {args.hand!r} does not match the loaded physical OrcaHand "
                 f"model ({sink.handedness!r}). Pass the matching --model-path or --hand."
             )
+    if args.fold_three_fingers:
+        if args.stub:
+            parser.error('--fold-three-fingers needs a live hand retargeting stream, not --stub')
+        from orca_teleop.hand_modes import FoldThreeFingersComposer
+        action_composer = FoldThreeFingersComposer(retarget_model_path, action_composer)
+        logger.info('Hand mode: middle/ring/pinky held folded; physical targets_deg=%s',
+                    action_composer.pose_deg)
+
     sink.connect()
     assert isinstance(sink, RecordableSink), "Sinks must be recordable to collect data"
 
@@ -831,6 +841,7 @@ def _main_record(argv: list[str]) -> None:
                           for key, value in vars(args).items()},
             'joint_ids': joint_ids, 'angle_units': 'canonical_model_radians',
             'arm_reference': arm_reference, 'configuration': configuration,
+            'fixed_finger_pose_deg': (action_composer.pose_deg if args.fold_three_fingers else None),
         })
         control.update(dataset_root=str(dataset.root), joint_ids=joint_ids, target=args.num_episodes)
 

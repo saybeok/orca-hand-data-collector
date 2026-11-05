@@ -16,7 +16,7 @@ def launch(collector):
     from PIL import Image, ImageTk
 
     app = tk.Tk()
-    app.title('ORCA · 화투 시연 수집' + (' [UI 시험 모드]' if collector.demo else ''))
+    app.title('ORCA · 시연 수집' + (' [UI 시험 모드]' if collector.demo else ''))
     app.tk.call('tk', 'scaling', 1.333333333)
     lock = (collector.config_dir / ('demo.lock' if collector.demo else 'app.lock')).open('w')
     try:
@@ -83,7 +83,7 @@ def launch(collector):
     top.grid(row=0, column=0, sticky='ew', pady=(0, 12))
     title = ttk.Frame(top)
     title.pack(side='left')
-    ttk.Label(title, text='화투 시연 수집', style='Title.TLabel').pack(anchor='w')
+    ttk.Label(title, text='시연 수집', style='Title.TLabel').pack(anchor='w')
     ttk.Label(title, text='Quest  /  AM-ARM200 + ORCA Hand', style='Muted.TLabel').pack(anchor='w')
     phase_var = tk.StringVar(value='연결 전')
     badge = ttk.Label(top, textvariable=phase_var, style='Status.TLabel')
@@ -243,6 +243,7 @@ def launch(collector):
     target_var = tk.StringVar(value=str(collector.settings['target']))
     velocity_var = tk.StringVar(value=str(collector.settings['velocity']))
     acceleration_var = tk.StringVar(value=str(collector.settings['acceleration']))
+    fold_var = tk.BooleanVar(value=collector.settings.get('fold_three_fingers', False))
     folder_var = tk.StringVar(value=collector.settings['data_root'])
     source_vars = {name: tk.StringVar(value=str(value)) for name, value in collector.settings['sources'].items()}
     ttk.Label(side, text='성공한 시연', style='Muted.TLabel').pack(anchor='w')
@@ -285,6 +286,11 @@ def launch(collector):
     entry = ttk.Entry(collection_tab, textvariable=task_var)
     entry.pack(fill='x', pady=(6, 12))
     fields.append(entry)
+    fold_check = ttk.Checkbutton(collection_tab, text='중지·약지·새끼 접어 고정', variable=fold_var)
+    fold_check.pack(anchor='w', pady=(0, 5))
+    fields.append(fold_check)
+    ttk.Label(collection_tab, text='연결 전에 선택하세요. 엄지·검지와\n손목·팔은 계속 조작할 수 있습니다.',
+              style='Muted.TLabel', wraplength=280, justify='left').pack(anchor='w', pady=(0, 12))
     for label, variable in (('성공 목표 (회)', target_var), ('팔 속도 (°/초)', velocity_var),
                             ('가속도 (°/초²)', acceleration_var)):
         row = ttk.Frame(collection_tab)
@@ -316,7 +322,7 @@ def launch(collector):
         if path.exists():
             subprocess.Popen(['xdg-open', str(path)])
     ttk.Button(folder_buttons, text='저장 위치 열기', command=open_folder).pack(side='right')
-    ttk.Label(collection_tab, text='성공 저장만 횟수에 포함됩니다.\n실패와 종료 시 미저장 시도는 폐기합니다.\n시도 사이에는 직접 자세·카드를 정리하세요.',
+    ttk.Label(collection_tab, text='성공 저장만 횟수에 포함됩니다.\n실패와 종료 시 미저장 시도는 폐기합니다.\n시도 사이에는 직접 자세·물체를 정리하세요.',
               style='Muted.TLabel', wraplength=280, justify='left').pack(anchor='w', pady=16)
 
     for name in CAMERAS:
@@ -348,6 +354,7 @@ def launch(collector):
     def capture_settings():
         collector.save_settings({'task': task_var.get(), 'target': target_var.get(),
                                  'velocity': velocity_var.get(), 'acceleration': acceleration_var.get(),
+                                 'fold_three_fingers': fold_var.get(),
                                  'data_root': folder_var.get(),
                                  'sources': {name: var.get() for name, var in source_vars.items()}})
     def run_background(fn):
@@ -433,6 +440,8 @@ def launch(collector):
             buttons[key].configure(state='disabled' if active or busy[0] else 'normal')
         for field in fields:
             field.configure(state='disabled' if active or busy[0] else 'normal')
+        if collector.demo:
+            fold_check.configure(state='disabled')
         choose_button.configure(state='disabled' if active or busy[0] else 'normal')
         arm_home_button.configure(state='normal' if active and phase == 'ready' and not collector.demo else 'disabled')
         for key in ('record', 'save', 'discard', 'stop'):

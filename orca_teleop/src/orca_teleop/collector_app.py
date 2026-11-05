@@ -19,7 +19,7 @@ from orca_teleop.cameras import (
 from orca_teleop.collection_control import atomic_json, send_command
 
 CAMERAS = {'bottom': '바닥', 'wrist': '손목', 'realsense': '리얼센스'}
-DEFAULT_TASK = 'move the hwatu card.'
+DEFAULT_TASK = 'move the eclipse case'
 PHASES = {
     'idle': '연결 전', 'preview': '카메라 확인 중', 'preparing': '연결 확인 중',
     'connecting': '텔레옵 연결 중', 'warming_up': '손 트래킹·센서 대기',
@@ -77,6 +77,7 @@ class Collector:
         self.settings = {
             'task': DEFAULT_TASK, 'target': 50,
             'velocity': 15, 'acceleration': 45,
+            'fold_three_fingers': False,
             'data_root': str(root / 'data' / ('collector_demo' if demo else 'lerobot')),
             'sources': {name: parse_camera_spec(os.environ.get(
                 f'ORCA_CAMERA_{name.upper()}', f'{name}:0')).index for name in CAMERAS},
@@ -84,7 +85,7 @@ class Collector:
         path = self.config_dir / ('demo_settings.json' if demo else 'settings.json')
         if path.exists():
             self.settings.update(json.loads(path.read_text()))
-            if self.settings['task'] == 'Flip over the hwatu card.':
+            if self.settings['task'] in ('Flip over the hwatu card.', 'move the hwatu card.'):
                 self.settings['task'] = DEFAULT_TASK
                 atomic_json(path, self.settings)
         self.settings_path = path
@@ -114,6 +115,9 @@ class Collector:
                 raise ValueError('속도·가속도는 0보다 큰 숫자로 입력해 주세요.')
         if not settings['task'].strip():
             raise ValueError('작업 지시를 입력해 주세요.')
+        settings.setdefault('fold_three_fingers', False)
+        if not isinstance(settings['fold_three_fingers'], bool):
+            raise ValueError('세 손가락 고정 옵션은 체크 여부로 지정해 주세요.')
         settings['data_root'] = str(Path(settings['data_root']).expanduser().resolve())
         self.settings = settings
         atomic_json(self.settings_path, settings)
@@ -271,6 +275,8 @@ class Collector:
                    '--repo-id', f'local/{self.dataset_root.name}', '--root', str(self.dataset_root),
                    '--control-dir', str(self.control_dir)]
         command += ['--stub'] if self.demo else ['--local', '--source', 'metaquest', '--hand', 'right']
+        if not self.demo and s.get('fold_three_fingers', False):
+            command += ['--fold-three-fingers']
         for spec in specs:
             command += ['--camera', spec]
         return command
