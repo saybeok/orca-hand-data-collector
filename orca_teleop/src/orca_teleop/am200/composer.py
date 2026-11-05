@@ -145,13 +145,15 @@ class Am200ActionComposer:
         config: ArmMappingConfig | None = None,
         site_name: str = FLANGE_SITE,
         calibration: OperatorCalibration | None = None,
+        hand_config_path: str | Path | None = None,
     ) -> Am200ActionComposer:
         import mujoco
 
         model_path = Path(model_path)
         model = mujoco.MjModel.from_xml_path(str(model_path))
         joint_map = CanonicalJointMap.load(
-            joint_map_path or model_path.parent / "joint_map.json", model
+            joint_map_path or model_path.parent / "joint_map.json", model,
+            hand_config_path=hand_config_path,
         )
         return cls(joint_map, ArmIk(model, site_name=site_name), config, calibration)
 

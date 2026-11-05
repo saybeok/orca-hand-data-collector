@@ -105,6 +105,7 @@ def main() -> None:
     if not args.no_arm:
         composer = Am200ActionComposer.from_model_path(
             sink.model_path,
+            hand_config_path=args.hand_config,
             config=ArmMappingConfig(
                 scale=args.arm_scale,
                 max_velocity_rad_s=(None if args.arm_max_velocity_deg_s is None

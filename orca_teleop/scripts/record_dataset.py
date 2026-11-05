@@ -732,12 +732,14 @@ def _main_record(argv: list[str]) -> None:
             if args.no_arm:
                 model = mujoco.MjModel.from_xml_path(str(sink.model_path))
                 joint_map = CanonicalJointMap.load(
-                    sink.model_path.parent / "joint_map.json", model
+                    sink.model_path.parent / "joint_map.json", model,
+                    hand_config_path=args.hand_config if args.backend == 'am200_hw' else None,
                 )
                 action_composer = HoldArmActionComposer(joint_map)
             else:
                 action_composer = Am200ActionComposer.from_model_path(
                     sink.model_path,
+                    hand_config_path=args.hand_config if args.backend == 'am200_hw' else None,
                     config=ArmMappingConfig(
                         scale=args.arm_scale,
                         max_velocity_rad_s=(None if args.arm_max_velocity_deg_s is None

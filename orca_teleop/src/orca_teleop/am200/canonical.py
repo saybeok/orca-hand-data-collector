@@ -120,11 +120,16 @@ class CanonicalJointMap:
         return slice(self.arm_dof, self.dof)
 
     @classmethod
-    def load(cls, joint_map_path: str | Path, model: Any) -> CanonicalJointMap:
+    def load(cls, joint_map_path: str | Path, model: Any, *,
+             hand_config_path: str | Path | None = None) -> CanonicalJointMap:
         """Read ``joint_map.json`` and check it still describes ``model``.
 
         Raises rather than silently reordering: a stale map is the one failure
         mode that would quietly drive the wrong joints.
+
+        Hardware callers may supply ``hand_config_path`` so the passthrough
+        wrist uses its physical ROM. Simulation keeps the compiled model's
+        limits; arm and finger limits are unchanged in both cases.
         """
         import mujoco
 
@@ -164,6 +169,19 @@ class CanonicalJointMap:
 
         if tuple(roles[: len(ARM_ROLES)]) != ARM_ROLES:
             raise ValueError(f"expected the arm at indices 0..2, found {roles[: len(ARM_ROLES)]}")
+
+        if hand_config_path is not None and 'hand.wrist' in roles:
+            import yaml
+
+            hand_config = yaml.safe_load(Path(hand_config_path).read_text())
+            wrist_rom = np.asarray(hand_config['joint_roms']['wrist'], dtype=float)
+            if (wrist_rom.shape != (2,) or not np.isfinite(wrist_rom).all()
+                    or wrist_rom[0] >= wrist_rom[1]):
+                raise ValueError('Hardware wrist ROM must contain two increasing finite angles')
+            index = roles.index('hand.wrist')
+            # Physical wrist angles are passthrough radians. A simulated
+            # model's older limits must not truncate the calibrated hardware ROM.
+            lower[index], upper[index] = np.deg2rad(wrist_rom)
 
         return cls(
             roles=tuple(roles),

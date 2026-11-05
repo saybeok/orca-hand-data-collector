@@ -122,7 +122,9 @@ class Am200HardwareSink(RecordableSink):
 
         model = mujoco.MjModel.from_xml_path(str(self._model_path))
         joint_map_path = self._model_path.parent / "joint_map.json"
-        self._map = CanonicalJointMap.load(joint_map_path, model)
+        self._map = CanonicalJointMap.load(
+            joint_map_path, model, hand_config_path=self._hand_config_path if self._enable_hand else None,
+        )
         self._target = np.zeros(self._map.dof, dtype=np.float64)
 
         try:

@@ -314,10 +314,10 @@ class AdaptiveAnalyticalRetargeter:
         finger_phys_deg = np.rad2deg(qpos_phys)
         if self._retarget_cfg.get("pinch_diagnostics", False) and self._w_pinch > 0:
             self._log_pinch_diagnostic(keypoints, finger_phys_deg)
-        wrist_phys_deg = float(
-            np.clip(target_pose.wrist_angle_degrees, self._wrist_lower_deg, self._wrist_upper_deg)
-        )
-        wrist_signed = wrist_phys_deg if self.hand_type == "left" else -wrist_phys_deg
+        wrist_signed = target_pose.wrist_angle_degrees * self._wrist_input_scale
+        if self.hand_type == "right":
+            wrist_signed = -wrist_signed
+        wrist_signed = float(np.clip(wrist_signed, self._wrist_lower_deg, self._wrist_upper_deg))
 
         return OrcaJointPositions(
             {
@@ -544,6 +544,9 @@ class AdaptiveAnalyticalRetargeter:
 
     def _build_retarget_params(self) -> None:
         cfg = self._retarget_cfg
+        self._wrist_input_scale = float(cfg.get('wrist_input_scale', 1.0))
+        if not np.isfinite(self._wrist_input_scale) or self._wrist_input_scale <= 0:
+            raise ValueError('wrist_input_scale must be finite and positive')
         self._huber_delta = float(cfg.get("huber_delta_cm", 2.0))
         self._huber_delta_dir = float(cfg.get("huber_delta_dir", 0.5))
         self._norm_delta = float(cfg.get("norm_delta", 50.0))
