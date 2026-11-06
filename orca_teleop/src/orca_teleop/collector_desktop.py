@@ -429,10 +429,18 @@ def launch(collector):
         button.pack(side='left', padx=(0, 12))
         buttons[key] = button
     ttk.Label(action_row, text='왼손 핀치\n팔 이동 클러치', style='Muted.TLabel', justify='right').pack(side='right', padx=8)
+    from orca_teleop.pedals import PedalCommands, PedalListener
+    pedal_commands = PedalCommands(collector)
+    pedals = PedalListener(pedal_commands.receive)
+    pedal_var = tk.StringVar(value=pedals.status)
+    ttk.Label(footer, textvariable=pedal_var, style='Muted.TLabel').pack(anchor='w', pady=(6, 0))
+    pedals.start()
 
     last_log = ['']
     closing = [False]
     def refresh():
+        pedal_commands.dispatch_pending()
+        pedal_var.set(pedals.status)
         state = collector.status()
         phase, active = state['phase'], state['active']
         phase_var.set(PHASES.get(phase, phase))
@@ -552,6 +560,7 @@ def launch(collector):
     try:
         app.mainloop()
     finally:
+        pedals.close()
         collector.close_preview()
         if collector.active() and collector.status()['phase'] not in ('converting', 'converted'):
             collector.command('stop')

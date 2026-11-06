@@ -9,7 +9,7 @@ if ! command -v uv >/dev/null; then
   exit 1
 fi
 sudo apt-get update
-sudo apt-get install -y python3-tk python3-numpy python3-opencv python3-yaml python3-pil.imagetk fonts-noto-cjk adb v4l-utils ffmpeg
+sudo apt-get install -y python3-tk python3-numpy python3-opencv python3-yaml python3-pil.imagetk python3-xlib fonts-noto-cjk adb v4l-utils ffmpeg
 sudo usermod -aG dialout,plugdev "$(id -un)"
 sudo install -m 0644 configs/udev/70-orca-quest.rules /etc/udev/rules.d/70-orca-quest.rules
 sudo udevadm control --reload-rules
