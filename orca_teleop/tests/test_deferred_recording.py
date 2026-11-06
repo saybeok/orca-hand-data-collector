@@ -8,13 +8,15 @@ import pytest
 from orca_teleop.deferred_recording import DeferredCapture, capture_roots, convert_capture
 
 
-def make_capture(root, cameras=3):
+def make_capture(root, cameras=3, isolated=False):
     features = {k: {'dtype': 'float32', 'shape': (20,), 'names': None}
                 for k in ('observation.state', 'action')}
     features.update({f'observation.images.cam{i}': {
         'dtype': 'video', 'shape': (64, 64, 3), 'names': ['height', 'width', 'channels'],
     } for i in range(cameras)})
-    return DeferredCapture(root=root, repo_id='test/capture', fps=30, features=features)
+    from orca_teleop.capture_process import ProcessDeferredCapture
+    cls = ProcessDeferredCapture if isolated else DeferredCapture
+    return cls(root=root, repo_id='test/capture', fps=30, features=features)
 
 
 def frame(capture, index):
@@ -172,3 +174,71 @@ def test_app_selects_deferred_and_does_not_launch_conversion_during_teleop(tmp_p
     collector.phase = 'preparing'
     with pytest.raises(ValueError, match='세션 종료'):
         collector.convert(tmp_path)
+
+
+def test_process_capture_flushes_all_cameras_and_discards_only_unfinished_attempt(tmp_path):
+    import av
+    import os
+    capture = make_capture(tmp_path / 'session', isolated=True)
+    assert capture.worker_pid != os.getpid()
+    try:
+        for i in range(8):
+            capture.add_frame(frame(capture, i))
+        capture.clear_episode_buffer()
+        for count in (6, 3):
+            for i in range(count):
+                row = frame(capture, i)
+                capture.add_frame(row)
+                # Camera drivers and callers may release/reuse these buffers.
+                row['observation.images.cam0'][:] = 0
+            capture.save_episode()
+        assert capture.num_episodes == 2 and capture.num_frames == 9
+        capture.add_frame(frame(capture, 99))
+    finally:
+        capture.finalize()
+    assert capture._process.poll() == 0
+    assert not list(capture.root.glob('.attempt-*'))
+    output = convert_capture(capture.root)
+    for path in output.rglob('*.mp4'):
+        with av.open(str(path)) as container:
+            frames = list(container.decode(video=0))
+        assert len(frames) == 9
+        np.testing.assert_allclose([f.time for f in frames], np.arange(9)/30)
+        assert frames[0].to_ndarray(format='rgb24')[:, :, 0].mean() > 180
+
+
+def test_process_write_error_is_propagated_and_never_counts_a_success(tmp_path):
+    capture = make_capture(tmp_path / 'session', isolated=True)
+    row = frame(capture, 0)
+    row['action'] = np.zeros(19, np.float32)
+    capture.add_frame(row)
+    try:
+        with pytest.raises(RuntimeError, match='invalid numeric capture data'):
+            capture.save_episode()
+        assert capture.num_episodes == 0
+    finally:
+        try:
+            capture.finalize()
+        except RuntimeError:
+            pass
+    assert capture._process.poll() is not None
+    assert not list(capture.root.glob('episode-*'))
+
+
+def test_terminated_capture_process_keeps_previously_saved_trials(tmp_path):
+    capture = make_capture(tmp_path / 'session', isolated=True, cameras=1)
+    capture.add_frame(frame(capture, 0))
+    capture.save_episode()
+    previous = next(capture.root.glob('episode-*/*.frames')).read_bytes()
+    capture._process.terminate()
+    capture._process.wait(timeout=3)
+    try:
+        with pytest.raises(RuntimeError):
+            capture.add_frame(frame(capture, 1))
+    finally:
+        try:
+            capture.finalize()
+        except RuntimeError:
+            pass
+    assert next(capture.root.glob('episode-*/*.frames')).read_bytes() == previous
+    assert convert_capture(capture.root).is_dir()

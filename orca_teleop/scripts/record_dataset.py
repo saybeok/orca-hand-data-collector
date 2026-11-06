@@ -9,9 +9,9 @@ Record — per episode:
     into one dataset row. Recording timing does not drive robot dispatch.
   - recorder thread: blocks on ``rec_q``, calls ``dataset.add_frame(...)`` for
     every dict, and ``dataset.save_episode()`` when it sees the SAVE sentinel
-  - LeRobot streaming encoder: write H.264 while recording; on save verify
-    complete video frames/timestamps before committing episode metadata.
-    --video-storage images retains the asynchronous PNG/AV1 fallback.
+  - default capture writer: a separate process stores JPEG-95 and joint rows;
+    the collector's conversion button builds verified LeRobot videos later.
+    --video-storage streaming/images retains live H.264 / PNG fallbacks.
   - episodes after the first begin with ``go_home()`` (reset to the recording home
     pose), rest (default 5 s) with no teleop dispatch, then sensor warmup and
     recording; episode 1 starts without homing; SPACE saves and advances; at
@@ -299,10 +299,11 @@ def _stub_action_publisher(
 def _create_recording_dataset(dataset_class, *, repo_id, fps, features, root,
                               video_storage='streaming'):
     if video_storage == 'deferred':
-        from orca_teleop.deferred_recording import DeferredCapture
-        dataset = DeferredCapture(repo_id=repo_id, fps=fps, features=features,
+        from orca_teleop.capture_process import ProcessDeferredCapture
+        dataset = ProcessDeferredCapture(repo_id=repo_id, fps=fps, features=features,
                                   root=root or _default_lerobot_root(repo_id))
-        logger.info('Video storage: deferred JPEG quality 95; LeRobot conversion after collection.')
+        logger.info('Video storage: deferred JPEG quality 95 in separate process pid=%d; '
+                    'LeRobot conversion after collection.', dataset.worker_pid)
         return dataset
     camera_count = sum(ft['dtype'] in ('image', 'video') for ft in features.values())
     streaming = video_storage == 'streaming' and any(ft['dtype'] == 'video' for ft in features.values())
@@ -402,6 +403,7 @@ def _recorder_loop(
 ) -> None:
     """Drain rec_q. Frames are dicts; save/discard sentinels finalize; ``None`` exits."""
     episode_failed = False
+    last_backlog_warning = -float('inf')
     while True:
         item = rec_q.get()
         if item is None:
@@ -452,7 +454,8 @@ def _recorder_loop(
             started = time.perf_counter()
             dataset.add_frame(item)
             elapsed = time.perf_counter() - started
-            if rec_q.qsize() >= 32 and elapsed > .03:
+            if rec_q.qsize() >= 32 and elapsed > .03 and time.perf_counter() - last_backlog_warning >= 1:
+                last_backlog_warning = time.perf_counter()
                 logger.warning('Recording backlog: %d/64 frames; last add_frame %.1f ms; storage=%s',
                                rec_q.qsize(), elapsed * 1000, type(dataset).__name__)
         except Exception:
