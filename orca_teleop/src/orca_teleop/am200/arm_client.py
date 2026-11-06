@@ -255,10 +255,13 @@ class AmArmFeetech:
             raise ValueError('Arm return pose must be finite')
         velocity = math.radians(float(self._cfg.get('home_velocity_deg_s', 15)))
         acceleration = math.radians(float(self._cfg.get('home_acceleration_deg_s2', 45)))
+        tolerance = math.radians(float(self._cfg.get('home_tolerance_deg', 3)))
         if not (np.isfinite([velocity, acceleration]).all() and velocity > 0 and acceleration > 0):
             raise ValueError('Arm home velocity and acceleration must be positive and finite')
+        if not np.isfinite(tolerance) or tolerance <= 0:
+            raise ValueError('Arm home tolerance must be positive and finite')
         distance = float(np.max(np.abs(target - start)))
-        if (distance <= math.radians(3) and self._last_motor_target is not None
+        if (distance <= tolerance and self._last_motor_target is not None
                 and np.allclose(self._last_motor_target, target, rtol=0, atol=1e-6)):
             # A Save followed by Record should not wait through a second
             # empty trajectory when the servo is already holding this goal.
@@ -273,11 +276,17 @@ class AmArmFeetech:
             time.sleep(period)
         deadline = time.monotonic() + 2.0
         while True:
-            error = float(np.max(np.abs(self.read_motor_rad() - target)))
-            if error <= math.radians(3):
+            errors = self.read_motor_rad() - target
+            error = float(np.max(np.abs(errors)))
+            if error <= tolerance:
+                logger.info('Arm initial pose reached: max error %.1f deg (tolerance %.1f deg)',
+                            math.degrees(error), math.degrees(tolerance))
                 return
             if time.monotonic() >= deadline:
-                raise RuntimeError(f'Arm did not reach initial pose (max error {math.degrees(error):.1f} deg)')
+                details = ', '.join(f'{name}={math.degrees(value):+.1f} deg'
+                                    for name, value in zip(self._joint_names, errors))
+                raise RuntimeError(f'Arm did not reach initial pose (max error {math.degrees(error):.1f} deg, '
+                                   f'tolerance {math.degrees(tolerance):.1f} deg; {details})')
             time.sleep(0.05)
 
     def return_home(self) -> np.ndarray:

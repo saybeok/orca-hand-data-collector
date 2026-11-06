@@ -844,7 +844,13 @@ def _main_record(argv: list[str]) -> None:
         logger.info('Hand mode: middle/ring/pinky held folded; physical targets_deg=%s',
                     action_composer.pose_deg)
 
-    sink.connect()
+    try:
+        sink.connect()
+    except Exception as exc:
+        if control:
+            control.update(phase='error', error=f'텔레옵 서버 시작 전 로봇·카메라 연결 실패: {exc}')
+            control.close()
+        raise
     assert isinstance(sink, RecordableSink), "Sinks must be recordable to collect data"
 
     joint_ids = list(sink.joint_ids)

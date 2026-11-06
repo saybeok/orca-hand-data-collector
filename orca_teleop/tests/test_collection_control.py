@@ -10,6 +10,20 @@ from orca_teleop.collection_control import CollectionControl, send_command
 from orca_teleop.collector_app import Collector, camera_specs
 
 
+def test_failed_connection_keeps_the_specific_error_in_app_status(tmp_path):
+    from types import SimpleNamespace
+    collector = Collector(tmp_path)
+    collector.control_dir = tmp_path / 'control'
+    collector.control_dir.mkdir()
+    message = '텔레옵 서버 시작 전 로봇·카메라 연결 실패: elbow_flex'
+    (collector.control_dir / 'status.json').write_text(json.dumps({'phase': 'error', 'error': message}))
+    collector.process = SimpleNamespace(returncode=1, poll=lambda: 1)
+    collector.logs.append('unhelpful last traceback line')
+    state = collector.status()
+    assert state['phase'] == 'error' and state['error'] == message
+    assert not state['active']
+
+
 def test_buttons_are_phase_gated_and_duplicate_save_is_rejected(tmp_path):
     stop, advance = threading.Event(), threading.Event()
     control = CollectionControl(tmp_path, stop, advance)

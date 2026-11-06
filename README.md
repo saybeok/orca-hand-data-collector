@@ -163,6 +163,12 @@ orca_teleop/.venv/bin/python orca_teleop/scripts/convert_recordings.py \
 
 ## 문제 해결
 
+### Quest에서 ERR_EMPTY_RESPONSE가 표시될 때
+
+앱에서 **텔레옵 가능 · 녹화 대기**가 표시된 뒤 Quest Browser의 `http://localhost:8765`를 여세요. USB/ADB 전달이 정상이어도 PC 수집 프로세스가 로봇·카메라 연결 단계에서 종료되면 WebXR 서버는 시작되지 않습니다. 앱의 오류와 세션 `recorder.log`에서 실제 원인을 확인하세요.
+
+`Arm did not reach initial pose`가 원인이면 메시지에 각 관절 오차와 허용값이 표시됩니다. 이 조립체의 부하가 걸린 팔꿈치에서 약 3.7°의 정지 오차를 확인해 `home_tolerance_deg: 5`로 설정했습니다. 이 값은 초기/복귀 도착 판정에만 적용하며, 저장된 목표 자세·모터 명령·세션 좌표 원점은 바꾸지 않습니다. 5°를 넘는 오차와 통신 실패는 계속 오류로 처리합니다. 다른 로봇에서 오차가 크면 값을 계속 늘리는 대신 실제 목표·측정값과 기구 상태를 확인하세요.
+
 ### Quest USB 권한 오류
 
 현재 Quest 3 USB ID `2833:5013`용 규칙이 포함돼 있습니다.

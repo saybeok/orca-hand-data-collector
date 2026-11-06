@@ -31,6 +31,9 @@ max_step_from_home_rad: null
 home_pose_file: ../../data/arm_home/initial_pose.json
 home_velocity_deg_s: 15
 home_acceleration_deg_s2: 45
+# Loaded elbow holds ~3.7 deg from the requested pose on this assembly.
+# Arrival tolerance only: keep the taught pose and motor command unchanged.
+home_tolerance_deg: 5
 return_home_on_close: true
 hold_on_disconnect: true
 # Read-only, once-per-second feedback to diagnose loaded-arm sag at VR start.

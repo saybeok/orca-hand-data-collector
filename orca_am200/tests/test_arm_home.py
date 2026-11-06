@@ -155,6 +155,47 @@ def test_return_does_not_repeat_an_already_completed_trajectory(setup_arm):
     arm.disconnect(disable_torque=False)
 
 
+@pytest.mark.parametrize('tolerance,error_deg,succeeds', [(5, 3.7, True), (5, 6, False), (3, 3.7, False)])
+def test_loaded_home_error_uses_configured_tolerance_without_changing_goal(
+        setup_arm, monkeypatch, tolerance, error_deg, succeeds):
+    config, clients = setup_arm
+    arm = AmArmFeetech(config)
+    arm.connect()
+    zero = arm._motor_home.copy()
+    arm._cfg['home_tolerance_deg'] = tolerance
+    write = clients[0].write_positions_sync
+
+    def loaded_write(*args, **kwargs):
+        write(*args, **kwargs)
+        clients[0].positions[2] -= np.deg2rad(error_deg)
+
+    clients[0].write_positions_sync = loaded_write
+    ticks = iter(np.arange(0, 20, .2))
+    monkeypatch.setattr(arm_client.time, 'monotonic', lambda: next(ticks))
+    target = zero + .2
+    if succeeds:
+        arm._move_motor_pose(target)
+    else:
+        with pytest.raises(RuntimeError, match='elbow_flex='):
+            arm._move_motor_pose(target)
+    np.testing.assert_allclose(arm._last_motor_target, target)
+    np.testing.assert_array_equal(arm._motor_home, zero)
+    arm.disconnect(disable_torque=False)
+
+
+@pytest.mark.parametrize('tolerance', [0, -1, float('nan')])
+def test_invalid_home_tolerance_is_rejected_before_moving(setup_arm, tolerance):
+    config, clients = setup_arm
+    arm = AmArmFeetech(config)
+    arm.connect()
+    arm._cfg['home_tolerance_deg'] = tolerance
+    before = len(clients[0].calls)
+    with pytest.raises(ValueError, match='tolerance'):
+        arm._move_motor_pose(arm._motor_home + .1)
+    assert not any(isinstance(c, tuple) and c[0] == 'write' for c in clients[0].calls[before:])
+    arm.disconnect(disable_torque=False)
+
+
 @pytest.mark.parametrize('return_fails', [False, True])
 def test_shutdown_returns_before_disconnect_and_preserves_torque(return_fails):
     calls = []

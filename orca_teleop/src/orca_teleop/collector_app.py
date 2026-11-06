@@ -324,7 +324,7 @@ class Collector:
                 pass
         if self.process is not None and self.process.poll() is not None:
             if self.process.returncode:
-                state.update(phase='error', error=self.error or '\n'.join(list(self.logs)[-8:]))
+                state.update(phase='error', error=self.error or state.get('error') or '\n'.join(list(self.logs)[-8:]))
             elif state['phase'] not in ('finished', 'converted', 'error'):
                 state['phase'] = 'finished'
         if self.error:
