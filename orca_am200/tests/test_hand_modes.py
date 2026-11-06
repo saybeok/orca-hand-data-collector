@@ -34,7 +34,7 @@ def test_folding_only_changes_the_three_fingers_without_mutating_the_input():
     for finger in ('middle', 'ring', 'pinky'):
         assert result.data[f'{finger}_mcp'] == 75
         assert result.data[f'{finger}_pip'] == 90
-        assert result.data[f'{finger}_abd'] == before[f'{finger}_abd']
+        assert result.data[f'{finger}_abd'] == {'middle': 8, 'ring': 0, 'pinky': -15}[finger]
     mode.reset()
     assert mode(None, original).data == result.data
 
@@ -45,6 +45,36 @@ def test_folded_angles_respect_the_hand_rom(tmp_path):
     path = tmp_path / 'hand.yaml'
     path.write_text(yaml.safe_dump(config))
     assert FoldThreeFingersComposer(path).pose_deg['middle_mcp'] == 60
+
+
+def test_folded_middle_leaves_clearance_for_index_flexion_in_the_robot_model():
+    import mujoco
+    from orca_teleop.am200.canonical import CanonicalJointMap
+
+    model = mujoco.MjModel.from_xml_path(str(MODEL))
+    data = mujoco.MjData(model)
+    mapping = CanonicalJointMap.load(MODEL.parent / 'joint_map.json', model)
+    mode = FoldThreeFingersComposer(HAND)
+    collision = {}
+    for finger in ('index', 'middle'):
+        collision[finger] = [i for i in range(model.ngeom)
+            if finger in (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY,
+                                          int(model.geom_bodyid[i])) or '')
+            and (model.geom_contype[i] or model.geom_conaffinity[i])]
+    gaps = []
+    for mcp, pip in ((0, 0), (30, 30), (60, 60), (85, 90)):
+        pose = hand_action()
+        pose.data.update(index_mcp=mcp, index_pip=pip)
+        folded = mode(None, pose)
+        q = np.zeros(mapping.dof)
+        q[mapping.hand_slice] = mapping.hand_from_physical(folded)
+        data.qpos[mapping.qpos_index] = q
+        mujoco.mj_forward(model, data)
+        gaps.append(min(mujoco.mj_geomDistance(model, data, i, j, .2, None)
+                        for i in collision['index'] for j in collision['middle']))
+    # Sampled index flexion path with its normal ABD command; this is a model
+    # clearance check, not a guarantee about the actual silicone skin shape.
+    assert min(gaps) > .002
 
 
 def test_full_command_keeps_arm_clutch_and_free_joints_and_is_recorded_after_folding():

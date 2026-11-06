@@ -5,6 +5,10 @@ import numpy as np
 import yaml
 from orca_core import OrcaJointPositions
 
+# Physical right-hand degrees: park the folded fingers away from the index's
+# working space. Moving only the middle finger pushes it into the ring finger.
+_RIGHT_FOLDED_ABD_DEG = {'middle': 8.0, 'ring': 0.0, 'pinky': -15.0}
+
 
 class FoldThreeFingersComposer:
     """Keep middle/ring/pinky folded while forwarding thumb, index and wrist.
@@ -18,7 +22,9 @@ class FoldThreeFingersComposer:
         self.composer = composer
         self.pose_deg = {}
         for finger in ('middle', 'ring', 'pinky'):
-            for suffix, value in (('abd', config['neutral_position'][f'{finger}_abd']),
+            abd = (_RIGHT_FOLDED_ABD_DEG[finger] if config.get('type') == 'right'
+                   else config['neutral_position'][f'{finger}_abd'])
+            for suffix, value in (('abd', abd),
                                   ('mcp', 75.0), ('pip', 90.0)):
                 joint = f'{finger}_{suffix}'
                 limits = np.asarray(config['joint_roms'][joint], dtype=float)
