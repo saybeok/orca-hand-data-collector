@@ -375,6 +375,7 @@ class AdaptiveAnalyticalRetargeter:
                 np.arccos(np.clip(first @ second / norm, -1, 1))
             )), 1))
         thumb_input = self._human_thumb_ip_bend(keypoints)
+        thumb_target = self._thumb_ip_target_bend(keypoints)
         thumb_model = (None if self._thumb_ip_index is None else
                        round(float(finger_deg[self._thumb_ip_index]
                                    + np.rad2deg(self._thumb_ip_rest_bend)), 1))
@@ -383,6 +384,7 @@ class AdaptiveAnalyticalRetargeter:
             "target_gap_cm=%s | model_gap_cm=%s | thumb_at_limit=%s | "
             "input_index_bend_deg(pip,dip)=%s | "
             "input_thumb_ip_bend_deg=%s | model_thumb_ip_bend_deg=%s | "
+            "target_thumb_ip_bend_deg=%s | "
             "cmd_index_deg(abd,mcp,pip)=%s | cmd_thumb_deg(mcp,abd,pip,dip)=%s | "
             "cmd_ring_deg(abd,mcp,pip)=%s | cmd_pinky_deg(abd,mcp,pip)=%s | "
             "cmd_middle_deg(abd,mcp,pip)=%s | joint_at_limit=%s | taught_contact=%s | taught_joint_error_deg=%s",
@@ -390,6 +392,7 @@ class AdaptiveAnalyticalRetargeter:
             np.round(target_gaps, 2).tolist(), np.round(model_gaps, 2).tolist(),
             ",".join(thumb_limits) or "none", input_bend,
             None if thumb_input is None else round(float(np.rad2deg(thumb_input)), 1), thumb_model,
+            None if thumb_target is None else round(float(np.rad2deg(thumb_target)), 1),
             [round(float(commands[f"index_{j}"]), 1) for j in ("abd", "mcp", "pip")],
             [round(float(commands[f"thumb_{j}"]), 1) for j in ("mcp", "abd", "pip", "dip")],
             [round(float(commands[f"ring_{j}"]), 1) for j in ("abd", "mcp", "pip")],
@@ -560,6 +563,9 @@ class AdaptiveAnalyticalRetargeter:
         self._w_thumb_ip_bend = float(cfg.get("w_thumb_ip_bend", 0.0))
         if not np.isfinite(self._w_thumb_ip_bend) or self._w_thumb_ip_bend < 0:
             raise ValueError("w_thumb_ip_bend must be finite and non-negative")
+        self._thumb_ip_free_bend_gain = float(cfg.get("thumb_ip_free_bend_gain", 1.0))
+        if not np.isfinite(self._thumb_ip_free_bend_gain) or self._thumb_ip_free_bend_gain <= 0:
+            raise ValueError("thumb_ip_free_bend_gain must be finite and positive")
         self._thumb_ip_bend_scope = cfg.get("thumb_ip_bend_scope", "pinch")
         if self._thumb_ip_bend_scope not in ("pinch", "always", "free"):
             raise ValueError("thumb_ip_bend_scope must be 'pinch', 'always', or 'free'")
@@ -701,8 +707,9 @@ class AdaptiveAnalyticalRetargeter:
         tangent /= length
         self._thumb_ip_rest_bend = float(np.arctan2(distal @ tangent, distal @ proximal))
         if self._w_thumb_ip_bend > 0 or self._thumb_ip_tracking == "direct_free":
-            logger.info("Thumb IP tracking enabled: mode=%s, weight=%g, scope=%s, URDF rest bend=%.2f deg",
+            logger.info("Thumb IP tracking enabled: mode=%s, weight=%g, scope=%s, free_gain=%g, URDF rest bend=%.2f deg",
                         self._thumb_ip_tracking, self._w_thumb_ip_bend, self._thumb_ip_bend_scope,
+                        self._thumb_ip_free_bend_gain,
                         np.rad2deg(self._thumb_ip_rest_bend))
 
     @staticmethod
@@ -717,6 +724,27 @@ class AdaptiveAnalyticalRetargeter:
         if not np.isfinite(norm) or norm < 1e-12:
             return None
         return float(np.arccos(np.clip(a @ b / norm, -1, 1)))
+
+    def _thumb_ip_target_bend(self, keypoints: np.ndarray) -> float | None:
+        """Scale free positive IP travel, preserving extension and full pinches.
+
+        Raw landmarks and contact targets stay unchanged. The scaled target
+        enters both direct tracking and the bend objective before solving;
+        normal joint ROM and per-frame velocity bounds still apply.
+        """
+        bend = self._human_thumb_ip_bend(keypoints)
+        if bend is None:
+            return None
+        if bend <= self._thumb_ip_rest_bend:
+            return bend
+        free = 1.0
+        if self._w_pinch > 0:
+            alphas = self._compute_pinch_alpha(keypoints)[1:]
+            active = np.where(self._pinch_pair_weights > 0, alphas, 0)
+            activation = float(np.clip(active.max() / max(self._pinch_alpha_max, 1e-8), 0, 1))
+            free = 1.0 - activation**2 * (3 - 2 * activation)
+        gain = 1.0 + free * (self._thumb_ip_free_bend_gain - 1.0)
+        return self._thumb_ip_rest_bend + gain * (bend - self._thumb_ip_rest_bend)
 
     def _ingest_calibration_frame(self, normalized_joints: np.ndarray, source: str) -> None:
         if self._scale_calibration == 'bone_lengths':
@@ -772,7 +800,7 @@ class AdaptiveAnalyticalRetargeter:
         target_tip_dirs = self._compute_tip_dirs(keypoints)
         target_full_hand_vectors = self._compute_full_hand_vectors(keypoints)
         target_pinch_vectors = self._compute_pinch_vectors(keypoints)
-        thumb_ip_bend = self._human_thumb_ip_bend(keypoints)
+        thumb_ip_bend = self._thumb_ip_target_bend(keypoints)
 
         opt = self._nlopt.opt(self._nlopt.LD_SLSQP, len(self._finger_joint_ids))
         opt.set_maxeval(int(self._retarget_cfg.get("maxeval", 50)))

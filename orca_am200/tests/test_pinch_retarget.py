@@ -620,8 +620,9 @@ def test_direct_free_holds_thumb_on_degenerate_thumb_input(smooth_retargeter):
     assert q[r._thumb_ip_index] == before
 
 
-@pytest.mark.parametrize('bend,gap_cm', [(90, None), (60, 5), (60, 0), (90, 0)])
-def test_collection_profile_keeps_thumb_flexion_near_contact(bend, gap_cm):
+@pytest.mark.parametrize('bend,gap_cm,expected_bend',
+                         [(53, None, 98.3), (60, 5, 88), (60, 0, 60), (90, 0, 90)])
+def test_collection_profile_keeps_thumb_flexion_near_contact(bend, gap_cm, expected_bend):
     """Do not straighten a bent thumb merely because pinch becomes active.
 
     Synthetic FK checks cover the actual collection profile, not physical
@@ -641,26 +642,28 @@ def test_collection_profile_keeps_thumb_flexion_near_contact(bend, gap_cm):
         assert np.all(q >= r._lower_phys) and np.all(q <= r._upper_phys)
         previous = q.copy()
     model_bend = np.rad2deg(q[r._thumb_ip_index] + r._thumb_ip_rest_bend)
-    assert model_bend == pytest.approx(bend, abs=5)
+    assert model_bend == pytest.approx(expected_bend, abs=5)
     if gap_cm == 0:
         assert _tip_gap_cm(r, q) < 1.5
 
 
-def test_free_thumb_target_reaches_id15_command_conversion(smooth_retargeter, monkeypatch):
+@pytest.mark.parametrize('gain,input_bend', [(1, 40), (2, 53)])
+def test_free_thumb_target_reaches_id15_command_conversion(smooth_retargeter, monkeypatch, gain, input_bend):
     import dataclasses
     import mujoco
     from orca_teleop.am200.canonical import CanonicalJointMap
     from orca_teleop.am200.composer import HoldArmActionComposer
 
     r = smooth_retargeter
-    r._retarget_cfg.update(thumb_ip_tracking='direct_free', thumb_ip_bend_scope='always')
+    r._retarget_cfg.update(thumb_ip_tracking='direct_free', thumb_ip_bend_scope='always',
+                           thumb_ip_free_bend_gain=gain)
     r._build_retarget_params()
     r._calibration_done = True
-    kp = _free_thumb_pose(r, 40)
+    kp = _free_thumb_pose(r, input_bend)
     monkeypatch.setattr(r, '_target_keypoints_in_urdf_frame', lambda _: kp)
     for n in range(40):
         action = r.retarget(TargetPose(kp, timestamp_ns=1_000_000_000 + n * 33_333_333))
-    expected = 40 - np.rad2deg(r._thumb_ip_rest_bend)
+    expected = gain * (input_bend - np.rad2deg(r._thumb_ip_rest_bend))
     assert action.data['thumb_dip'] == pytest.approx(expected)
     model = mujoco.MjModel.from_xml_path(str(ROOT / 'orca_am200/robot_model/am_arm200_orca_right.xml'))
     mapping = CanonicalJointMap.load(ROOT / 'orca_am200/robot_model/joint_map.json', model)
@@ -685,6 +688,60 @@ def test_free_thumb_target_reaches_id15_command_conversion(smooth_retargeter, mo
     next_motor = hand._joint_to_motor_pos({**applied, 'thumb_dip': expected + 10})
     i = hand.config.motor_id_to_idx_dict[15]
     assert abs(next_motor[i] - motor[i]) > 0.01
+
+
+@pytest.mark.parametrize('gain', [0, -1, float('nan'), float('inf')])
+def test_invalid_thumb_ip_gain_is_rejected(smooth_retargeter, gain):
+    smooth_retargeter._retarget_cfg['thumb_ip_free_bend_gain'] = gain
+    with pytest.raises(ValueError, match='thumb_ip_free_bend_gain'):
+        smooth_retargeter._build_retarget_params()
+
+
+def test_thumb_ip_gain_preserves_zero_and_holds_invalid_input(smooth_retargeter):
+    r = smooth_retargeter
+    r._retarget_cfg.update(thumb_ip_tracking='direct_free', thumb_ip_bend_scope='always',
+                           thumb_ip_free_bend_gain=2)
+    r._build_retarget_params()
+    kp = _free_thumb_pose(r, np.rad2deg(r._thumb_ip_rest_bend))
+    assert r._thumb_ip_target_bend(kp) == pytest.approx(r._thumb_ip_rest_bend)
+    opened = _free_thumb_pose(r, 0)
+    assert r._thumb_ip_target_bend(opened) == pytest.approx(0)
+    kp[4] = kp[3]
+    assert r._thumb_ip_target_bend(kp) is None
+    before = r._neutral_qpos_phys[r._thumb_ip_index]
+    assert r._solve(kp)[r._thumb_ip_index] == before
+
+
+def test_free_thumb_gain_blends_to_ordinary_pinch_without_changing_landmarks(smooth_retargeter):
+    r = smooth_retargeter
+    r._retarget_cfg.update(thumb_ip_free_bend_gain=2)
+    r._build_retarget_params()
+    kp = _free_thumb_pose(r, 53)
+    targets = []
+    for gap in np.linspace(.06, 0, 101):
+        kp[8] = kp[4] + [gap, 0, 0]
+        before = kp.copy()
+        targets.append(r._thumb_ip_target_bend(kp))
+        np.testing.assert_array_equal(kp, before)
+    assert np.rad2deg(targets[0]) == pytest.approx(106 - np.rad2deg(r._thumb_ip_rest_bend))
+    assert np.rad2deg(targets[-1]) == pytest.approx(53)
+    assert np.all(np.diff(targets) <= 1e-10)
+    assert np.rad2deg(np.max(np.abs(np.diff(targets)))) < 2
+
+
+def test_free_thumb_gain_still_respects_rom_and_velocity(smooth_retargeter):
+    r = smooth_retargeter
+    r._retarget_cfg.update(thumb_ip_tracking='direct_free', thumb_ip_bend_scope='always',
+                           thumb_ip_free_bend_gain=2)
+    r._build_retarget_params()
+    kp = _free_thumb_pose(r, 120)
+    previous = r._neutral_qpos_phys.copy()
+    for _ in range(65):
+        q = r._solve(kp, dt_s=1/30)
+        assert np.max(abs(q - previous)) <= np.deg2rad(2) + 1e-8
+        assert np.all(q >= r._lower_phys) and np.all(q <= r._upper_phys)
+        previous = q.copy()
+    assert q[r._thumb_ip_index] == pytest.approx(r._upper_phys[r._thumb_ip_index])
 
 
 @pytest.mark.parametrize('scope,mode', [('always','unknown'), ('pinch','direct_free')])
