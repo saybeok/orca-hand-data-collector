@@ -494,7 +494,7 @@ def launch(collector):
             if state.get('arm_home_saved'):
                 detail_var.set('팔 초기 자세를 저장했습니다. 다음 연결과 세션 종료 시 이 자세로 복귀합니다.')
             else:
-                detail_var.set('녹화 시작·성공 저장 시 팔은 저장된 초기 자세로 복귀합니다. 복귀 후 왼손 핀치를 풀었다가 다시 잡으세요.')
+                detail_var.set('녹화 시작·성공 저장·실패 재시도 시 팔은 저장된 초기 자세로 복귀합니다. 복귀 후 왼손 핀치를 풀었다가 다시 잡으세요.')
         elif phase == 'parking':
             detail_var.set('팔을 저장한 초기 자세로 천천히 복귀시키고 있습니다. 복귀 후에도 팔의 힘은 유지됩니다.')
         else:

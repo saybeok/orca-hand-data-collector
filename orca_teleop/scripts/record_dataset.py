@@ -245,9 +245,9 @@ def _return_arm_for_collection(returner, control, mirror, queues, stop_event, re
     drain_actions_queue(queues.actions_q, stop_event=stop_event, shutdown_sentinel=_SHUTDOWN)
     if stop_event.is_set():
         return False
-    if reason == 'save':
-        # The next trial has its own readiness gate. The final successful
-        # episode must also be able to finish after the operator removes VR.
+    if reason in ('save', 'discard'):
+        # The next trial has its own readiness gate. Finish parking even if
+        # the operator removes VR after saving or discarding the attempt.
         return True
     return wait_for_teleop_mirror_ready(
         get_observation=lambda: _preview_observation(returner.sink, control),
@@ -1224,6 +1224,14 @@ def _main_record(argv: list[str]) -> None:
                     break
             elif not episode_ok:
                 logger.error("Episode %d produced no usable frames; not saving.", ep_idx + 1)
+
+            # A UI/pedal retry returns only after the failed buffer is gone,
+            # including a retry pressed before its first usable frame. Stop
+            # keeps the shutdown path responsible for the final return.
+            if (control and control.discard_event.is_set() and arm_returner
+                    and not _return_arm_for_collection(
+                        arm_returner, control, action_mirror, queues, stop_event, 'discard')):
+                break
 
     except KeyboardInterrupt:
         logger.info("Interrupted — finalizing dataset.")

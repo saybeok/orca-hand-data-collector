@@ -1,4 +1,4 @@
-"""Start/save returns must not compete with teleop or change dataset zero."""
+"""Start/save/retry returns must not compete with teleop or change dataset zero."""
 import importlib.util
 from pathlib import Path
 import queue
@@ -121,7 +121,7 @@ def test_hardware_button_return_only_changes_arm_target():
     assert calls == ['same_return_as_close']
 
 
-@pytest.mark.parametrize('reason', ['record', 'save'])
+@pytest.mark.parametrize('reason', ['record', 'save', 'discard'])
 def test_button_return_finishes_before_freshness_gate_and_never_captures_frames(monkeypatch, reason):
     spec = importlib.util.spec_from_file_location('return_recorder', ROOT/'orca_teleop/scripts/record_dataset.py')
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
@@ -141,7 +141,8 @@ def test_button_return_finishes_before_freshness_gate_and_never_captures_frames(
                      else [('phase', 'returning'), 'return'])
 
 
-def test_failed_return_cannot_advance_to_recording(monkeypatch):
+@pytest.mark.parametrize('reason', ['record', 'discard'])
+def test_failed_return_cannot_advance_to_recording(monkeypatch, reason):
     spec = importlib.util.spec_from_file_location('failed_return_recorder', ROOT/'orca_teleop/scripts/record_dataset.py')
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     def failure():
@@ -152,4 +153,4 @@ def test_failed_return_cannot_advance_to_recording(monkeypatch):
     with pytest.raises(RuntimeError, match='pose not reached'):
         module._return_arm_for_collection(
             SimpleNamespace(return_home=failure), SimpleNamespace(update=lambda **kw: None),
-            TeleopActionMirror(), SimpleNamespace(actions_q=queue.Queue()), threading.Event(), 'record')
+            TeleopActionMirror(), SimpleNamespace(actions_q=queue.Queue()), threading.Event(), reason)
