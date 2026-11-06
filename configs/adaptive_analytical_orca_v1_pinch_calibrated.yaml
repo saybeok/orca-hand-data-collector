@@ -15,8 +15,10 @@ retarget:
   pinch_diagnostics: true
   pinch_relax_tip_position: true
   thumb_ip_tracking: direct_free
-  w_thumb_ip_bend: 5.0
-  thumb_ip_bend_scope: free
+  # Keep measured IP flexion in the objective even when a fingertip is close.
+  # Fading it out allowed the pinch solver to straighten a visibly bent thumb.
+  w_thumb_ip_bend: 50.0
+  thumb_ip_bend_scope: always
   pinch_pair_weights:
     # Prioritize thumb-index contact over anatomical posture near a pinch.
     index: 8.0

@@ -620,6 +620,32 @@ def test_direct_free_holds_thumb_on_degenerate_thumb_input(smooth_retargeter):
     assert q[r._thumb_ip_index] == before
 
 
+@pytest.mark.parametrize('bend,gap_cm', [(90, None), (60, 5), (60, 0), (90, 0)])
+def test_collection_profile_keeps_thumb_flexion_near_contact(bend, gap_cm):
+    """Do not straighten a bent thumb merely because pinch becomes active.
+
+    Synthetic FK checks cover the actual collection profile, not physical
+    skin contact or Quest's accuracy in measuring the operator's bend.
+    """
+    r = AdaptiveAnalyticalRetargeter(
+        hand_config_path=str(HAND_CONFIG), urdf_path=str(URDF),
+        config_path=str(ROOT / 'configs/adaptive_analytical_orca_v1_pinch_calibrated.yaml'),
+    )
+    kp = _free_thumb_pose(r, bend)
+    if gap_cm is not None:
+        kp[8] = kp[4] + [gap_cm / 100, 0, 0]
+    previous = r._neutral_qpos_phys.copy()
+    for _ in range(65):
+        q = r._solve(kp, dt_s=1/30)
+        assert np.max(np.abs(q - previous)) <= np.deg2rad(2) + 1e-8
+        assert np.all(q >= r._lower_phys) and np.all(q <= r._upper_phys)
+        previous = q.copy()
+    model_bend = np.rad2deg(q[r._thumb_ip_index] + r._thumb_ip_rest_bend)
+    assert model_bend == pytest.approx(bend, abs=5)
+    if gap_cm == 0:
+        assert _tip_gap_cm(r, q) < 1.5
+
+
 def test_free_thumb_target_reaches_id15_command_conversion(smooth_retargeter, monkeypatch):
     import dataclasses
     import mujoco
