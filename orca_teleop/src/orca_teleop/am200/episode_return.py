@@ -19,6 +19,10 @@ class ArmEpisodeReturn:
         with self._lock:
             self.composer.reset()
 
+    @property
+    def joint_map(self):
+        return self.composer.joint_map
+
     def compose(self, frame, hand_action):
         with self._lock:
             if self._await_release:
@@ -26,22 +30,26 @@ class ArmEpisodeReturn:
                 # disabled. Do not count those frames as a new release, and
                 # never compare the headset's clock with the PC clock.
                 if (self.dispatch_enabled.is_set()
-                        and (not frame.clutch_supported or not frame.clutch_engaged)):
+                        and (frame.clutch_released or not frame.clutch_supported
+                             or not frame.clutch_engaged)):
                     self._await_release = False
                 frame = replace(frame, clutch_supported=True, clutch_engaged=False)
             if not self.dispatch_enabled.is_set():
                 frame = replace(frame, clutch_supported=True, clutch_engaged=False)
             return self.composer(frame, hand_action)
 
+    __call__ = compose
+
     def dispatch(self, action):
         with self._lock:
             # Recheck inside the lock: a return may have disabled dispatch
             # after the consumer's outer event check.
             if not self.dispatch_enabled.is_set():
-                return
+                return False
             if isinstance(action, RobotJointCommand) and action.timestamp_ns < self._cutoff_ns:
-                return
+                return False
             self.sink.dispatch_action(action)
+            return True
 
     def return_home(self):
         self.dispatch_enabled.clear()

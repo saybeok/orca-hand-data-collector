@@ -102,10 +102,10 @@ from orca_teleop.constants import (
     DEFAULT_HAND,
     DEFAULT_PORT,
     JOIN_TIMEOUT,
-    QUEUES_MAXSIZE,
     SIM_RENDER_MODE,
 )
 from orca_teleop.ingress.server import IngressServer
+from orca_teleop.latest import LatestQueue
 from orca_teleop.pipeline import (
     _SHUTDOWN,
     OrcaHandSink,
@@ -746,8 +746,8 @@ def _main_record(argv: list[str]) -> None:
     # TODO: Use constants key names from lerobot for frame key names
 
     queues = TeleopQueues(
-        landmarks_q=queue.Queue(maxsize=QUEUES_MAXSIZE),
-        actions_q=queue.Queue(maxsize=QUEUES_MAXSIZE),
+        landmarks_q=LatestQueue(_SHUTDOWN),
+        actions_q=LatestQueue(_SHUTDOWN),
     )
     stop_event = threading.Event()
     advance_event = threading.Event()
@@ -1003,7 +1003,7 @@ def _main_record(argv: list[str]) -> None:
                 "landmark_source": ("webxr" if args.source == "metaquest" else "mediapipe"),
                 "retargeter_config_path": args.retarget_config,
                 "retargeter_backend": args.retargeter,
-                "action_composer": arm_returner.compose if arm_returner else action_composer,
+                "action_composer": arm_returner if arm_returner else action_composer,
                 "fixed_hand_pose_deg": action_composer.pose_deg if args.fold_three_fingers else None,
                 "diagnostic_hand_map": (sink._map if args.backend == 'am200_hw'
                                         and args.hand_feedback_debug else None),
@@ -1159,7 +1159,7 @@ def _main_record(argv: list[str]) -> None:
                 if use_timer and time.perf_counter() >= ep_end:
                     break
 
-                action = action_mirror.snapshot()
+                action = action_mirror.applied_snapshot()
                 if action is None:
                     ticker.tick()
                     continue

@@ -18,6 +18,7 @@ Typical usage inside the pipeline::
 import logging
 import queue
 import threading
+import time
 from concurrent import futures
 from dataclasses import dataclass
 from typing import Literal
@@ -50,6 +51,10 @@ class HandLandmarks:
     clutch_engaged: bool = False
     # One-shot: re-run the retargeter's auto-scale window (off-hand fist, etc.).
     retarget_recalibrate: bool = False
+    # Local mailbox metadata, never compared with the headset's clock.
+    clutch_released: bool = False
+    control_epoch: int = 0
+    received_monotonic_ns: int = 0
 
 
 class _HandStreamServicer(hand_stream_pb2_grpc.HandStreamServicer):
@@ -111,6 +116,7 @@ class _HandStreamServicer(hand_stream_pb2_grpc.HandStreamServicer):
                     retarget_recalibrate=bool(
                         getattr(frame, "retarget_recalibrate", False)
                     ),
+                    received_monotonic_ns=time.monotonic_ns(),
                 )
 
                 # Always keep the latest frame; drop stale ones.

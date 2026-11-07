@@ -74,7 +74,8 @@ def test_worker_binds_fixed_mode_before_ik_and_preserves_trace_on_canonical_comm
                                         wrist_transform=np.eye(4)))
     queues.landmarks_q.put(pipeline._SHUTDOWN)
     pipeline.retargeter_worker(queues, threading.Event(), action_composer=mode,
-                               fixed_hand_pose_deg=mode.pose_deg, diagnostic_hand_map=composer._map)
+                               fixed_hand_pose_deg=mode.pose_deg, diagnostic_hand_map=composer._map,
+                               independent_arm=False)
     command = queues.actions_q.get_nowait()
     assert calls == ['bind', 'solve']
     assert command.hand_diagnostics['command_timestamp_ns'] == command.timestamp_ns

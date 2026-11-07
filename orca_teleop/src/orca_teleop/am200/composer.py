@@ -180,6 +180,10 @@ class Am200ActionComposer:
         return np.column_stack([forward, left, up])
 
     @property
+    def joint_map(self) -> CanonicalJointMap:
+        return self._map
+
+    @property
     def arm_position(self) -> np.ndarray:
         return self._arm_q.copy()
 
@@ -215,6 +219,8 @@ class Am200ActionComposer:
         # A publisher with no clutch means follow unconditionally; a released
         # clutch means hold. The hand keeps moving either way, so releasing
         # parks the arm without freezing the fingers.
+        if frame.clutch_released:
+            self._pause_motion()
         if frame.clutch_supported and not frame.clutch_engaged:
             self._pause_motion()
             return self._command(hand_action)

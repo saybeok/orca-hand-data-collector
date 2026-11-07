@@ -36,6 +36,10 @@ class FoldThreeFingersComposer:
         if self.composer is not None:
             self.composer.reset()
 
+    @property
+    def joint_map(self):
+        return getattr(self.composer, 'joint_map', None)
+
     def reset_arm_position(self, position):
         self.composer.reset_arm_position(position)
 
