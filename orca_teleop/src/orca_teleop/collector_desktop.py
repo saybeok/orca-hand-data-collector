@@ -499,6 +499,9 @@ def launch(collector):
             detail_var.set('팔을 저장한 초기 자세로 천천히 복귀시키고 있습니다. 복귀 후에도 팔의 힘은 유지됩니다.')
         else:
             detail_var.set('카메라 구도를 확인한 뒤 텔레옵을 연결하세요. 영상은 창 크기에 맞춰 표시됩니다.')
+        if state.get('retarget_config'):
+            detail_var.set(detail_var.get() + '\n리타겟팅: ' + str(state.get('retargeter_backend', ''))
+                           + ' / ' + Path(state['retarget_config']).name)
         detail_label.configure(wraplength=max(600, outer.winfo_width() - 20))
         for name, panel in panels.items():
             try:

@@ -262,6 +262,12 @@ class AdaptiveAnalyticalRetargeter:
         self._last_qpos_phys: np.ndarray | None = None
         self._last_timestamp_ns: int | None = None
         self._last_pinch_diagnostic_s = -float("inf")
+        self._fixed_joint_pose = {}
+        self._fixed_fingers = np.zeros(5, dtype=bool)
+        self._solver_failures = 0
+        self._solver_status = None
+        self._last_solver_warning_s = -float('inf')
+        self._last_final_diagnostic_s = -float('inf')
 
     @classmethod
     def from_paths(
@@ -284,6 +290,62 @@ class AdaptiveAnalyticalRetargeter:
         self._last_solve_pinch_vectors = None
         if self._taught_contacts is not None:
             self._taught_contacts.reset()
+
+    def set_fixed_hand_joints(self, pose_deg: dict[str, float]) -> None:
+        """Bind the collection mode before solving, not after the shared thumb IK."""
+        values = {}
+        for joint, degrees in pose_deg.items():
+            if joint not in self._finger_joint_ids:
+                raise ValueError(f'Unknown fixed finger joint: {joint}')
+            i = self._finger_joint_ids.index(joint)
+            value = float(np.deg2rad(degrees))
+            if not np.isfinite(value) or not self._lower_phys[i] <= value <= self._upper_phys[i]:
+                raise ValueError(f'Fixed finger joint outside physical ROM: {joint}')
+            values[i] = value
+        self._fixed_joint_pose = values
+        self._fixed_fingers = np.array([
+            all(i in values for i, joint in enumerate(self._finger_joint_ids)
+                if joint.startswith(finger + '_')) for finger in FINGERS
+        ])
+        weights = self._retarget_cfg.get('pinch_pair_weights', {})
+        self._pinch_pair_weights = np.array([float(weights.get(f, 1)) for f in FINGERS[1:]])
+        self._pinch_pair_weights[self._fixed_fingers[1:]] = 0
+        self._neutral_qpos_phys = self._build_neutral_qpos()
+        for i, value in values.items():
+            self._neutral_qpos_phys[i] = value
+        self.reset()
+        logger.info('Fixed joints bound inside IK: physical_deg=%s; pinch_pair_weights=%s',
+                    pose_deg, self._pinch_pair_weights.tolist())
+
+    def command_diagnostics(self, ik_deg, final_deg, timestamp_ns):
+        """Snapshot the final bounded command on this worker's FK, once/second.
+
+        The sink attaches its actual applied command and fresh encoder sample
+        to this same timestamp after writing. This avoids a second robot model
+        or concurrent access to the retargeter's mutable FK data.
+        """
+        now = time.monotonic()
+        if now - self._last_final_diagnostic_s < 1:
+            return None
+        self._last_final_diagnostic_s = now
+        q = np.deg2rad([final_deg[j] for j in self._finger_joint_ids])
+        self._robot.compute_positions_and_jacobians(
+            self._full_model_qpos(q), self._computed_frame_indices, self._contact_offsets)
+        trace = dict(command_timestamp_ns=int(timestamp_ns),
+                     solver_status=self._solver_status, solver_failures=self._solver_failures,
+                     ik_deg={j: round(float(v), 3) for j, v in ik_deg.items()},
+                     final_deg={j: round(float(v), 3) for j, v in final_deg.items()},
+                     powered_contact_verified=False)
+        if self._surface_contacts is not None:
+            distances, _ = self._surface_contacts.distances(with_jacobian=False)
+            trace['final_model_clearance_mm'] = np.round(distances * 1000, 3).tolist()
+            if self._last_solve_pinch_vectors is not None:
+                # Reuse precisely the targets used by this frame's solver.
+                alphas = self._last_solve_alphas
+                targets = self._surface_contact_targets_cm(self._last_solve_pinch_vectors, alphas)
+                trace['target_clearance_mm'] = np.round(targets * 10, 3).tolist()
+                trace['final_residual_mm'] = np.round(distances * 1000 - targets * 10, 3).tolist()
+        return trace
 
     def retarget(self, target_pose: TargetPose) -> OrcaJointPositions | None:
         if target_pose.source != "mediapipe":
@@ -819,6 +881,8 @@ class AdaptiveAnalyticalRetargeter:
                 return init_qpos.copy()
             lower = np.maximum(lower, init_qpos - step)
             upper = np.minimum(upper, init_qpos + step)
+        for i, value in self._fixed_joint_pose.items():
+            lower[i] = upper[i] = init_qpos[i] = value
         taught = None
         if self._taught_contacts is not None:
             taught = self._taught_contacts.target(
@@ -862,6 +926,7 @@ class AdaptiveAnalyticalRetargeter:
         opt.set_lower_bounds(lower.tolist())
         opt.set_upper_bounds(upper.tolist())
         self._last_solve_pinch_vectors = target_pinch_vectors.copy()
+        self._last_solve_alphas = alphas.copy()
 
         def objective(x, grad_out):
             loss, grad = self._loss_and_grad(
@@ -882,8 +947,20 @@ class AdaptiveAnalyticalRetargeter:
         opt.set_min_objective(objective)
         try:
             result = np.asarray(opt.optimize(init_qpos.tolist()), dtype=np.float64)
-        except RuntimeError:
+            self._solver_status = opt.last_optimize_result()
+            if not np.isfinite(result).all():
+                raise RuntimeError('optimizer returned nonfinite joint angles')
+        except RuntimeError as exc:
             result = init_qpos
+            self._solver_status = opt.last_optimize_result()
+            self._solver_failures += 1
+            now = time.monotonic()
+            if now - self._last_solver_warning_s >= 1:
+                self._last_solver_warning_s = now
+                held_loss = objective(init_qpos, np.empty(0))
+                logger.warning('Retarget solve failed; holding previous pose | failures=%d | '
+                               'status=%s | initial_loss=%.6g | held_loss=%.6g | error=%s',
+                               self._solver_failures, self._solver_status, held_loss, held_loss, exc)
         result = np.clip(result, lower, upper)
         self._last_qpos_phys = result.copy()
         return result
@@ -922,6 +999,7 @@ class AdaptiveAnalyticalRetargeter:
             0.0,
             self._pinch_alpha_max,
         )
+        alphas_4[self._fixed_fingers[1:]] = 0
         return np.concatenate([[float(np.max(alphas_4))], alphas_4])
 
     def _compute_pinch_vectors(self, keypoints: np.ndarray) -> np.ndarray:
@@ -1060,7 +1138,8 @@ class AdaptiveAnalyticalRetargeter:
             j_norm = (np.eye(3) - np.outer(unit_dir, unit_dir)) / (norm + 1e-8)
             j_diff = j_tip[i] - j_dip[i]
             total_grad += (
-                alphas[i] * self._w_dir * grad_dir[i] * (diff_normed_dir[i] @ j_norm @ j_diff)
+                alphas[i] * (not self._fixed_fingers[i]) * self._w_dir * grad_dir[i]
+                * (diff_normed_dir[i] @ j_norm @ j_diff)
             )
 
         target_pip = target_full_hand_vectors[:5]
@@ -1089,14 +1168,15 @@ class AdaptiveAnalyticalRetargeter:
         diff_normed_tip = diff_tip / (dist_tip[:, None] + 1e-8)
 
         for i in range(len(FINGERS)):
-            grad_coeff = (1.0 - alphas[i]) * self._w_full_hand / 3.0
+            grad_coeff = (1.0 - alphas[i]) * (not self._fixed_fingers[i]) * self._w_full_hand / 3.0
             total_grad += grad_coeff * grad_pip[i] * (diff_normed_pip[i] @ (j_pip[i] - j_palm))
             total_grad += grad_coeff * grad_dip[i] * (diff_normed_dip[i] @ (j_dip[i] - j_palm))
             total_grad += grad_coeff * grad_tip_full[i] * (diff_normed_tip[i] @ (j_tip[i] - j_palm))
 
         loss_tip_dir_vec = self._w_pos * loss_tip_pos + self._w_dir * loss_tip_dir
         loss_full = self._w_full_hand * loss_full_hand
-        total_loss = float(np.sum(alphas * loss_tip_dir_vec + (1.0 - alphas) * loss_full))
+        total_loss = float(np.sum((~self._fixed_fingers)
+                                 * (alphas * loss_tip_dir_vec + (1.0 - alphas) * loss_full)))
         if self._pinch_relax_tip_position and self._w_pinch > 0:
             total_loss += float(np.sum((position_weights - alphas) * self._w_pos * loss_tip_pos))
 

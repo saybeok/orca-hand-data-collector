@@ -103,6 +103,8 @@ class Am200HardwareSink(RecordableSink):
         self._stale_logged = False
         self._hand_feedback_debug = hand_feedback_debug
         self._last_hand_feedback_s = -float("inf")
+        self._hand_diagnostics = None
+        self._trace_feedback = False
 
     def connect(self) -> None:
         import mujoco
@@ -199,10 +201,12 @@ class Am200HardwareSink(RecordableSink):
             if tuple(action.joint_ids) != self._map.roles:
                 raise ValueError("RobotJointCommand joint_ids mismatch")
             self._target = self._map.clip(action.position)
+            self._hand_diagnostics = action.hand_diagnostics
         elif isinstance(action, OrcaJointPositions):
             target = self._target.copy()
             target[self._map.hand_slice] = self._map.hand_from_physical(action)
             self._target = self._map.clip(target)
+            self._hand_diagnostics = None
         else:
             raise TypeError(f"unsupported action type {type(action).__name__}")
         self._last_command_ns = time.monotonic_ns()
@@ -229,13 +233,22 @@ class Am200HardwareSink(RecordableSink):
         measurements of the tendon-driven link angle. Reject cached failures.
         """
         now = time.monotonic()
-        if now - self._last_hand_feedback_s < 1.0:
+        trace = self._hand_diagnostics
+        if trace is not None:
+            self._hand_diagnostics = None
+            self._trace_feedback = True
+        if (trace is None and (self._trace_feedback or now - self._last_hand_feedback_s < 1.0)):
             return
         self._last_hand_feedback_s = now
         try:
             measured = self._hand.get_joint_position()
             if not getattr(self._hand._motor_client, "last_read_ok", False):
                 raise RuntimeError("motor read failed; cached values rejected")
+            if trace is not None:
+                logger.info('Hand command trace | %s', {
+                    **trace, 'applied_deg': command, 'encoder_joint_deg': dict(measured.data),
+                    'encoder_is_independent_joint_sensor': False,
+                })
             target = float(command["thumb_dip"])
             estimate = measured.data.get("thumb_dip")
             if estimate is None or not np.isfinite(estimate):

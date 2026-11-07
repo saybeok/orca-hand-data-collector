@@ -280,6 +280,8 @@ def retargeter_worker(
     landmarks_viz: Any | None = None,
     landmark_source: LandmarkSource = "mediapipe",
     action_composer: Callable[[HandLandmarks, OrcaJointPositions], Any] | None = None,
+    fixed_hand_pose_deg: dict[str, float] | None = None,
+    diagnostic_hand_map: Any | None = None,
 ) -> None:
     """Consume ``HandLandmarks`` from the gRPC ingress, retarget, push to actions_q.
 
@@ -308,6 +310,11 @@ def retargeter_worker(
                 backend=retargeter_backend,
                 config_path=retargeter_config_path,
             )
+            if fixed_hand_pose_deg:
+                configure = getattr(retargeter, 'set_fixed_hand_joints', None)
+                if not callable(configure):
+                    raise ValueError('Selected retargeter cannot solve fixed hand joints')
+                configure(fixed_hand_pose_deg)
         except Exception:
             logger.exception("Retargeter init failed; shutting down worker.")
             return
@@ -371,11 +378,24 @@ def retargeter_worker(
 
             # Lets an embodiment with more joints than the hand build its own
             # command from the same frame, without the hand-only path changing.
+            ik_action = action
             if action_composer is not None:
                 try:
                     action = action_composer(item, action)
                 except Exception:
                     logger.exception("Action composer failed; forwarding the hand action.")
+
+            if diagnostic_hand_map is not None and callable(getattr(retargeter, 'command_diagnostics', None)):
+                from dataclasses import replace
+                from orca_teleop.am200.canonical import RobotJointCommand
+                if isinstance(action, RobotJointCommand):
+                    try:
+                        final = diagnostic_hand_map.clip(action.position)
+                        physical = diagnostic_hand_map.hand_to_physical(final[diagnostic_hand_map.hand_slice])
+                        trace = retargeter.command_diagnostics(ik_action.data, physical, action.timestamp_ns)
+                        action = replace(action, hand_diagnostics=trace)
+                    except Exception:
+                        logger.exception('Final hand diagnostic failed; retaining the valid command')
 
             try:
                 queues.actions_q.put_nowait(action)

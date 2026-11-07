@@ -7,6 +7,7 @@ import threading
 import time
 
 import numpy as np
+import pytest
 from orca_core import OrcaJointPositions
 
 from orca_teleop.recording import (
@@ -20,6 +21,13 @@ from orca_teleop.recording import (
 
 _SHUTDOWN = object()
 _JOINT_IDS = [f"j{i}" for i in range(3)]
+
+
+@pytest.fixture(autouse=True)
+def independent_joint_schema(monkeypatch):
+    # Other suites load physical hands and set a process-wide joint schema.
+    # These readiness tests deliberately use three synthetic j0/j1/j2 joints.
+    monkeypatch.setattr(OrcaJointPositions, '_default_joint_ids', None)
 
 
 def _action(values: list[float] | None = None) -> OrcaJointPositions:

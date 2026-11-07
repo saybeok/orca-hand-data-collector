@@ -56,18 +56,39 @@ def test_full_wrist_range_survives_retarget_composer_and_hardware_sink(
     np.testing.assert_allclose(command.position[:3], 0)
 
 
-def test_hardware_wrist_override_leaves_fingers_arm_and_simulation_limits_unchanged():
+def test_hardware_hand_rom_matches_config_with_refs_and_keeps_arm_and_sim_limits():
     model = mujoco.MjModel.from_xml_path(str(MODEL))
     simulated = CanonicalJointMap.load(MODEL.parent / 'joint_map.json', model)
     hardware = CanonicalJointMap.load(MODEL.parent / 'joint_map.json', model, hand_config_path=HAND)
     index = hardware.roles.index('hand.wrist')
     np.testing.assert_allclose(np.rad2deg([hardware.lower[index], hardware.upper[index]]), [-65, 35])
-    keep = np.arange(hardware.dof) != index
-    np.testing.assert_array_equal(hardware.lower[keep], simulated.lower[keep])
-    np.testing.assert_array_equal(hardware.upper[keep], simulated.upper[keep])
+    np.testing.assert_array_equal(hardware.lower[:3], simulated.lower[:3])
+    np.testing.assert_array_equal(hardware.upper[:3], simulated.upper[:3])
+    config = yaml.safe_load(HAND.read_text())
+    for i, joint_id in enumerate(hardware.hand_joint_ids, 3):
+        actual = np.rad2deg([hardware.lower[i] - hardware.ref[i], hardware.upper[i] - hardware.ref[i]])
+        np.testing.assert_allclose(actual, config['joint_roms'][joint_id], atol=1e-10)
     np.testing.assert_array_equal(hardware.ref, simulated.ref)
     joint = model.joint('right_wrist').id
     np.testing.assert_allclose([simulated.lower[index], simulated.upper[index]], model.jnt_range[joint])
+
+
+@pytest.mark.parametrize('joint_id', ['thumb_pip', 'thumb_dip', 'ring_abd'])
+def test_hand_endpoints_reach_hardware_sink_without_model_truncation(joint_id):
+    from orca_core import OrcaJointPositions
+    from orca_teleop.am200.composer import HoldArmActionComposer
+    model = mujoco.MjModel.from_xml_path(str(MODEL))
+    mapping = CanonicalJointMap.load(MODEL.parent / 'joint_map.json', model, hand_config_path=HAND)
+    config = yaml.safe_load(HAND.read_text())
+    sink = Am200HardwareSink(hand_config_path=HAND)
+    sink._map, sink._target = mapping, np.zeros(mapping.dof)
+    writes = []
+    sink._hand = SimpleNamespace(set_joint_positions=lambda value, **kw: writes.append(value))
+    for angle in config['joint_roms'][joint_id]:
+        action = OrcaJointPositions(dict(config['neutral_position']) | {joint_id: angle})
+        command = HoldArmActionComposer(mapping)(None, action)
+        sink.dispatch_action(command)
+        assert writes[-1][joint_id] == pytest.approx(angle, abs=1e-10)
 
 
 @pytest.mark.parametrize('gain', [0, -1, float('nan'), float('inf')])

@@ -749,3 +749,46 @@ def test_invalid_direct_tracking_configuration(smooth_retargeter, scope, mode):
     smooth_retargeter._retarget_cfg.update(thumb_ip_tracking=mode, thumb_ip_bend_scope=scope)
     with pytest.raises(ValueError, match='thumb IP tracking|thumb_ip_tracking'):
         smooth_retargeter._build_retarget_params()
+
+
+def test_folded_fingers_are_fixed_inside_ik_and_cannot_pull_shared_thumb(smooth_retargeter):
+    from orca_teleop.hand_modes import FoldThreeFingersComposer
+    r = smooth_retargeter
+    mode = FoldThreeFingersComposer(HAND_CONFIG)
+    r.set_fixed_hand_joints(mode.pose_deg)
+    kp = _free_thumb_pose(r, 45)
+    changed = kp.copy()
+    for tip in (12, 16, 20):
+        changed[tip-2:tip+1] = kp[4] + np.array([[.03, 0, .02], [.01, 0, .01], [0, 0, 0]])
+    assert not r._compute_pinch_alpha(changed)[2:].any()
+    np.testing.assert_array_equal(r._pinch_pair_weights[1:], 0)
+    outputs = []
+    for pose in (kp, changed):
+        r.reset()
+        for _ in range(20):
+            q = r._solve(pose)
+        for joint, degrees in mode.pose_deg.items():
+            assert np.rad2deg(q[r._finger_joint_ids.index(joint)]) == pytest.approx(degrees)
+        outputs.append(q)
+    np.testing.assert_allclose(outputs[0], outputs[1], atol=1e-10)
+
+
+def test_solver_failure_is_logged_and_holds_finite_previous_pose(smooth_retargeter, monkeypatch, caplog):
+    from types import SimpleNamespace
+    r = smooth_retargeter
+    original = r._nlopt
+    class FailingOpt:
+        def __init__(self, *args):
+            self.delegate = original.opt(*args)
+        def __getattr__(self, name):
+            return getattr(self.delegate, name)
+        def optimize(self, values):
+            raise RuntimeError('synthetic roundoff')
+        def last_optimize_result(self):
+            return -4
+    monkeypatch.setattr(r, '_nlopt', SimpleNamespace(opt=FailingOpt, LD_SLSQP=original.LD_SLSQP))
+    before = r._initial_qpos().copy()
+    q = r._solve(_free_thumb_pose(r, 45))
+    np.testing.assert_array_equal(q, before)
+    assert 'holding previous pose' in caplog.text
+    assert 'status=-4' in caplog.text and 'initial_loss=' in caplog.text

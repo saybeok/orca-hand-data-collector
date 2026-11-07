@@ -920,7 +920,8 @@ def _main_record(argv: list[str]) -> None:
             'arm_reference': arm_reference, 'configuration': configuration,
             'fixed_finger_pose_deg': (action_composer.pose_deg if args.fold_three_fingers else None),
         })
-        control.update(dataset_root=str(dataset.root), joint_ids=joint_ids, target=args.num_episodes)
+        control.update(dataset_root=str(dataset.root), joint_ids=joint_ids, target=args.num_episodes,
+                       retargeter_backend=args.retargeter, retarget_config=args.retarget_config)
 
     rec_q: queue.Queue = queue.Queue(maxsize=64)
     episode_finalized_q: queue.Queue[bool] = queue.Queue(maxsize=1)
@@ -1003,6 +1004,9 @@ def _main_record(argv: list[str]) -> None:
                 "retargeter_config_path": args.retarget_config,
                 "retargeter_backend": args.retargeter,
                 "action_composer": arm_returner.compose if arm_returner else action_composer,
+                "fixed_hand_pose_deg": action_composer.pose_deg if args.fold_three_fingers else None,
+                "diagnostic_hand_map": (sink._map if args.backend == 'am200_hw'
+                                        and args.hand_feedback_debug else None),
             },
             name="retargeter",
         )

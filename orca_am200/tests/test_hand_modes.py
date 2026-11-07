@@ -47,6 +47,39 @@ def test_folded_angles_respect_the_hand_rom(tmp_path):
     assert FoldThreeFingersComposer(path).pose_deg['middle_mcp'] == 60
 
 
+def test_worker_binds_fixed_mode_before_ik_and_preserves_trace_on_canonical_command(monkeypatch):
+    from types import SimpleNamespace
+    from orca_teleop import pipeline
+    composer = Am200ActionComposer.from_model_path(MODEL, hand_config_path=HAND)
+    mode = FoldThreeFingersComposer(HAND, composer)
+    action = hand_action()
+    calls = []
+    def bind(pose):
+        assert pose == mode.pose_deg
+        calls.append('bind')
+    def retarget(pose):
+        assert calls == ['bind']
+        calls.append('solve')
+        return action
+    def diagnostics(ik, final, stamp):
+        assert ik == action.data
+        for joint, value in mode.pose_deg.items():
+            assert final[joint] == pytest.approx(value)
+        return {'command_timestamp_ns': stamp}
+    fake = SimpleNamespace(set_fixed_hand_joints=bind, retarget=retarget,
+                           command_diagnostics=diagnostics)
+    monkeypatch.setattr(pipeline.Retargeter, 'from_paths', lambda *a, **kw: fake)
+    queues = pipeline.TeleopQueues(queue.Queue(), queue.Queue())
+    queues.landmarks_q.put(HandLandmarks(np.zeros((21, 3)), 'right', 123,
+                                        wrist_transform=np.eye(4)))
+    queues.landmarks_q.put(pipeline._SHUTDOWN)
+    pipeline.retargeter_worker(queues, threading.Event(), action_composer=mode,
+                               fixed_hand_pose_deg=mode.pose_deg, diagnostic_hand_map=composer._map)
+    command = queues.actions_q.get_nowait()
+    assert calls == ['bind', 'solve']
+    assert command.hand_diagnostics['command_timestamp_ns'] == command.timestamp_ns
+
+
 def test_folded_middle_leaves_clearance_for_index_flexion_in_the_robot_model():
     import mujoco
     from orca_teleop.am200.canonical import CanonicalJointMap

@@ -65,6 +65,19 @@ def _feedback_sink(enabled, read_ok=True):
     return sink, writes, reads
 
 
+def test_final_command_trace_uses_the_same_fresh_encoder_sample(caplog):
+    import logging
+    sink, writes, reads = _feedback_sink(True)
+    sink._hand_diagnostics = {'command_timestamp_ns': 1234, 'ik_deg': {'thumb_dip': 45}}
+    with caplog.at_level(logging.INFO):
+        sink._apply()
+        sink._apply()
+    assert len(reads) == 1 and len(writes) == 2
+    assert "'command_timestamp_ns': 1234" in caplog.text
+    assert "'applied_deg': {'thumb_dip': 45.0}" in caplog.text
+    assert "'encoder_joint_deg': {'thumb_dip': 23.0}" in caplog.text
+
+
 def test_feedback_debug_preserves_writes_and_throttles_reads(monkeypatch, caplog):
     sink, writes, reads = _feedback_sink(True)
     with caplog.at_level('INFO', logger='orca_teleop.am200.hw_sink'):

@@ -60,6 +60,24 @@ def keypoints(finger=None, gap_cm=0):
     return kp
 
 
+def test_command_trace_evaluates_final_pose_without_changing_optimizer_warm_start(calibrated):
+    r, _, _ = calibrated
+    q = r._solve(keypoints('index'))
+    previous = r._last_qpos_phys.copy()
+    ik = dict(zip(r._finger_joint_ids, np.rad2deg(q)))
+    final = dict(ik, thumb_dip=100)
+    trace = r.command_diagnostics(ik, final, 123456)
+    assert trace['command_timestamp_ns'] == 123456
+    assert trace['final_deg']['thumb_dip'] == 100
+    assert trace['powered_contact_verified'] is False
+    np.testing.assert_array_equal(previous, r._last_qpos_phys)
+    r._robot.compute_positions_and_jacobians(
+        r._full_model_qpos(np.deg2rad([final[j] for j in r._finger_joint_ids])), r._computed_frame_indices)
+    expected, _ = r._surface_contacts.distances(with_jacobian=False)
+    np.testing.assert_allclose(trace['final_model_clearance_mm'], expected*1000, atol=.001)
+    assert r.command_diagnostics(ik, final, 654321) is None
+
+
 def test_bias_fit_uses_only_training_and_preserves_signed_distance_meaning():
     values = measurements()
     fit = fit_clearance_biases(values)
