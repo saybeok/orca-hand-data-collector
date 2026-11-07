@@ -88,6 +88,24 @@ class SinkObservation:
     images: dict[str, np.ndarray]
 
 
+def _configure_arm_limits(sink, composer) -> None:
+    """Bind IK to servo travel before any producer starts; preserve hold on error."""
+    try:
+        limits = getattr(sink, 'arm_joint_limits', None)
+        configure = getattr(composer, 'set_arm_limits', None)
+        if limits is not None and callable(configure):
+            configure(*limits)
+    except Exception:
+        try:
+            if 'return_home' in inspect.signature(sink.close).parameters:
+                sink.close(return_home=False)
+            else:
+                sink.close()
+        except Exception:
+            logger.exception('Arm limit setup cleanup failed')
+        raise
+
+
 class RobotSink(ABC):
     """Pluggable consumer of ``OrcaJointPositions``.
 
@@ -538,6 +556,7 @@ def run(
         landmarks_viz.start()
 
     sink.connect()
+    _configure_arm_limits(sink, action_composer)
     if model_path is None:
         sink_model_path = getattr(sink, "retarget_model_path", None)
         if sink_model_path:

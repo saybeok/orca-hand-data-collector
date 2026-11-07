@@ -108,6 +108,7 @@ from orca_teleop.ingress.server import IngressServer
 from orca_teleop.latest import LatestQueue
 from orca_teleop.pipeline import (
     _SHUTDOWN,
+    _configure_arm_limits,
     OrcaHandSink,
     RecordableSink,
     TeleopQueues,
@@ -849,6 +850,7 @@ def _main_record(argv: list[str]) -> None:
 
     try:
         sink.connect()
+        _configure_arm_limits(sink, action_composer)
     except Exception as exc:
         if control:
             control.update(phase='error', error=f'텔레옵 서버 시작 전 로봇·카메라 연결 실패: {exc}')
@@ -911,6 +913,8 @@ def _main_record(argv: list[str]) -> None:
             'motor_home_rad': arm._motor_home.tolist(),
             'joint_signs': arm._signs.tolist(),
             'motor_ids': arm.motor_ids,
+            'model_joint_limits_rad': (None if arm.model_limits is None
+                                       else [bound.tolist() for bound in arm.model_limits]),
         }
         atomic_json(dataset.root / 'collection_session.json', {
             'created_at': datetime.now(timezone.utc).isoformat(),

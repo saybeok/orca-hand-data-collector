@@ -82,6 +82,7 @@ class AmArmFeetech:
         self._feedback_diagnostics = bool(self._cfg.get('feedback_diagnostics', False))
         self._last_feedback_s = -float('inf')
         self._last_motor_target: np.ndarray | None = None
+        self._motor_limits: np.ndarray | None = None
 
     @property
     def joint_names(self) -> list[str]:
@@ -102,6 +103,16 @@ class AmArmFeetech:
             # FeetechClient.connect already selects servo mode. Re-selecting it
             # disables torque, dropping an arm that was holding its parked pose.
             home = self.read_motor_rad().copy()
+            read_limits = getattr(client, 'read_sts_position_limits', None)
+            if callable(read_limits):
+                limits = read_limits()
+                self._motor_limits = np.asarray([limits[i] for i in self._motor_ids], dtype=float)
+                if (self._motor_limits.shape != (3, 2) or not np.isfinite(self._motor_limits).all()
+                        or np.any(self._motor_limits[:, 0] >= self._motor_limits[:, 1])):
+                    raise ValueError('Arm firmware position limits are invalid')
+                home = self._holdable_motor_position(home)
+                if park is not None:
+                    self._validate_motor_target(park)
             self._motor_home = home
             # Stage the measured pose before enabling torque, never a stale goal.
             self._write_motor_rad(home)
@@ -160,6 +171,21 @@ class AmArmFeetech:
         self._log_control_feedback()
         return (motor - self._motor_home) / self._signs
 
+    @property
+    def model_limits(self) -> tuple[np.ndarray, np.ndarray] | None:
+        """Actual servo limits in this session's canonical arm coordinates."""
+        limits = getattr(self, '_motor_limits', None)
+        if limits is None:
+            return None
+        assert self._motor_home is not None
+        bounds = np.sort((limits-self._motor_home[:, None])/self._signs[:, None], axis=1)
+        lower, upper = bounds[:, 0], bounds[:, 1]
+        if self._max_step is not None:
+            lower, upper = np.maximum(lower, -self._max_step), np.minimum(upper, self._max_step)
+        if np.any(lower > 1e-6) or np.any(upper < -1e-6) or np.any(lower >= upper):
+            raise ValueError('Taught arm zero is outside the usable firmware limits')
+        return lower.copy(), upper.copy()
+
     def _log_control_feedback(self) -> None:
         if not self._feedback_diagnostics or time.monotonic() - self._last_feedback_s < 1.0:
             return
@@ -197,9 +223,7 @@ class AmArmFeetech:
 
     def _write_motor_rad(self, motor, torque=None, speed=None) -> None:
         assert self._client is not None
-        motor = np.asarray(motor, dtype=np.float64).reshape(3)
-        if not np.isfinite(motor).all():
-            raise ValueError('Arm command must contain three finite motor angles')
+        motor = self._validate_motor_target(motor)
         write = getattr(self._client, "write_positions_sync", None)
         if not callable(write):
             write = self._client.write_desired_pos
@@ -210,6 +234,28 @@ class AmArmFeetech:
             torque=int(self._max_torque if torque is None else torque),
         )
         self._last_motor_target = motor.copy()
+
+    def _holdable_motor_position(self, measured):
+        measured = np.asarray(measured, dtype=float).reshape(3)
+        limits = getattr(self, '_motor_limits', None)
+        if limits is None:
+            return measured
+        clipped = np.clip(measured, limits[:, 0], limits[:, 1])
+        if np.max(abs(measured-clipped)) > np.deg2rad(1):
+            raise ValueError('Measured arm pose is more than 1 degree outside firmware limits')
+        return clipped
+
+    def _validate_motor_target(self, motor):
+        motor = np.asarray(motor, dtype=np.float64).reshape(3)
+        if not np.isfinite(motor).all():
+            raise ValueError('Arm command must contain three finite motor angles')
+        limits = getattr(self, '_motor_limits', None)
+        if limits is not None:
+            clipped = np.clip(motor, limits[:, 0], limits[:, 1])
+            if np.any(abs(motor-clipped) > 1e-6):
+                raise ValueError('Arm target exceeds firmware position limits; command not sent')
+            motor = clipped
+        return motor
 
     def hold_current(self, torque: int | None = None, speed: int | None = None) -> None:
         assert self._motor_home is not None
@@ -237,7 +283,7 @@ class AmArmFeetech:
 
         if self._home_pose_path is None:
             raise ValueError('Set home_pose_file in the arm config first')
-        pose = self.read_motor_rad().copy()
+        pose = self._holdable_motor_position(self.read_motor_rad()).copy()
         value = dict(version=1, motor_ids=self._motor_ids, joint_names=self._joint_names,
                      joint_signs=self._signs.tolist(), port=str(self._cfg['port']),
                      motor_rad=pose.tolist(), captured_at_unix_s=time.time())
@@ -249,8 +295,8 @@ class AmArmFeetech:
 
     def _move_motor_pose(self, target) -> None:
         """Cubic joint move, bounded at 15 deg/s and 45 deg/s² by default."""
-        start = self.read_motor_rad().copy()
-        target = np.asarray(target, dtype=float).reshape(3)
+        start = self._holdable_motor_position(self.read_motor_rad()).copy()
+        target = self._validate_motor_target(target)
         if not np.isfinite(target).all():
             raise ValueError('Arm return pose must be finite')
         velocity = math.radians(float(self._cfg.get('home_velocity_deg_s', 15)))

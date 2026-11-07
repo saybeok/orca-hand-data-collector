@@ -36,6 +36,8 @@ from .feetech import (
     SMS_STS_GOAL_SPEED_L,
     SMS_STS_ID,
     SMS_STS_BAUD_RATE,
+    SMS_STS_MIN_ANGLE_LIMIT_L,
+    SMS_STS_MAX_ANGLE_LIMIT_L,
 )
 
 # Map host-facing baud rates to the firmware's register code.
@@ -886,6 +888,30 @@ class FeetechClient(MotorClient):
 
             # Clear params for next use
             self.packet_handler.groupSyncWrite.clearParam()
+
+    def read_sts_position_limits(self) -> dict[int, tuple[float, float]]:
+        """Read STS servo-mode angle limits; never change EEPROM or torque."""
+        self._check_connected()
+        with self._bus_lock:
+            reader = GroupSyncRead(self.packet_handler, SMS_STS_MIN_ANGLE_LIMIT_L, 4)
+            for motor_id in self.motor_ids:
+                reader.addParam(motor_id)
+            if reader.txRxPacket() != COMM_SUCCESS:
+                self._flush_input_buffer()
+                raise OSError('STS position-limit read failed')
+            limits = {}
+            for motor_id in self.motor_ids:
+                available, error = reader.isAvailable(motor_id, SMS_STS_MIN_ANGLE_LIMIT_L, 4)
+                if not available or error:
+                    self._flush_input_buffer()
+                    raise OSError(f'STS position limits unavailable for motor {motor_id}: {error}')
+                low = reader.getData(motor_id, SMS_STS_MIN_ANGLE_LIMIT_L, 2)
+                high = reader.getData(motor_id, SMS_STS_MAX_ANGLE_LIMIT_L, 2)
+                if not 0 <= low < high <= POS_MAX:
+                    raise ValueError(f'Invalid STS servo position limits: ID {motor_id}, {low}, {high}')
+                limits[motor_id] = tuple(sorted((self._raw_to_rad(low, self.pos_scale),
+                                                self._raw_to_rad(high, self.pos_scale))))
+            return limits
 
     def read_sts_control_status(self) -> dict[int, dict]:
         """Read STS arm control/feedback registers without changing servo state.

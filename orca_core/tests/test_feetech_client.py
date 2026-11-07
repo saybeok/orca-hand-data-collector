@@ -146,6 +146,31 @@ def _expected_pos(client: FeetechClient, raw: int) -> float:
     return FeetechClient._raw_to_rad(raw, client.pos_scale)
 
 
+@pytest.mark.parametrize('failure', [None, 'missing', 'invalid', 'bus'])
+def test_sts_position_limits_are_read_only_and_fail_closed(client, monkeypatch, failure):
+    feetech, handler = client
+    class Reader:
+        def __init__(self, packet, address, size):
+            assert packet is handler and (address, size) == (9, 4)
+        def addParam(self, motor_id):
+            pass
+        def txRxPacket(self):
+            return 1 if failure == 'bus' else COMM_SUCCESS
+        def isAvailable(self, motor_id, address, size):
+            return not (failure == 'missing' and motor_id == 2), 0
+        def getData(self, motor_id, address, size):
+            return {9: 691, 11: (600 if failure == 'invalid' else 2677)}[address]
+    monkeypatch.setattr(feetech_client_module, 'GroupSyncRead', Reader)
+    if failure:
+        with pytest.raises((OSError, ValueError)):
+            feetech.read_sts_position_limits()
+    else:
+        limits = feetech.read_sts_position_limits()
+        np.testing.assert_allclose(limits[2], sorted([_expected_pos(feetech, 691),
+                                                     _expected_pos(feetech, 2677)]))
+    assert not any('write' in entry for entry in handler.log)
+
+
 @pytest.mark.parametrize('disable_torque', [False, True])
 def test_disconnect_closes_port_and_only_releases_torque_when_requested(client, disable_torque):
     feetech, handler = client

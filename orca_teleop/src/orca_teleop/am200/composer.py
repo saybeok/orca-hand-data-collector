@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -186,6 +186,18 @@ class Am200ActionComposer:
     @property
     def arm_position(self) -> np.ndarray:
         return self._arm_q.copy()
+
+    def set_arm_limits(self, lower, upper) -> None:
+        self._ik.constrain_limits(lower, upper)
+        lower, upper = self._ik.limits
+        map_lower, map_upper = self._map.lower.copy(), self._map.upper.copy()
+        map_lower[self._map.arm_slice], map_upper[self._map.arm_slice] = lower, upper
+        self._map = replace(self._map, lower=map_lower, upper=map_upper)
+        self._arm_q = np.clip(self._arm_q, lower, upper)
+        self.reset()
+        logger.info('Arm IK firmware bounds_deg: lower=%s upper=%s',
+                    np.round(np.rad2deg(lower), 2).tolist(),
+                    np.round(np.rad2deg(upper), 2).tolist())
 
     def reset(self) -> None:
         """Start a new episode: drop any clutch drift and restore the mapping.

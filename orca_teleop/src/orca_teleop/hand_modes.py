@@ -43,6 +43,9 @@ class FoldThreeFingersComposer:
     def reset_arm_position(self, position):
         self.composer.reset_arm_position(position)
 
+    def set_arm_limits(self, lower, upper):
+        self.composer.set_arm_limits(lower, upper)
+
     def __call__(self, frame, hand_action):
         positions = dict(hand_action.data)
         positions.update(self.pose_deg)

@@ -320,6 +320,10 @@ class Am200HardwareSink(RecordableSink):
         self._target[self._map.arm_slice] = position
         return position.copy()
 
+    @property
+    def arm_joint_limits(self):
+        return None if self._arm is None else self._arm.model_limits
+
     def run_loop(
         self,
         actions_q: queue.Queue[Any],

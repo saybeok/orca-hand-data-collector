@@ -93,6 +93,17 @@ class ArmIk:
     def limits(self) -> tuple[np.ndarray, np.ndarray]:
         return self._lower.copy(), self._upper.copy()
 
+    def constrain_limits(self, lower: np.ndarray, upper: np.ndarray) -> None:
+        """Intersect the model workspace with measured servo-mode travel."""
+        lower, upper = np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
+        if (lower.shape != self._lower.shape or upper.shape != self._upper.shape
+                or not np.isfinite(lower).all() or not np.isfinite(upper).all()):
+            raise ValueError('Arm bounds must contain three finite lower/upper angles')
+        lower, upper = np.maximum(lower, self._lower), np.minimum(upper, self._upper)
+        if np.any(lower >= upper):
+            raise ValueError('Arm firmware limits do not intersect the model limits')
+        self._lower, self._upper = lower, upper
+
     def flange_position(self, arm_q: np.ndarray) -> np.ndarray:
         """Forward kinematics: where the flange sits for these joint angles."""
         self._apply(arm_q)

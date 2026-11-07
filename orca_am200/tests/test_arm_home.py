@@ -71,6 +71,34 @@ def test_startup_stages_measured_goal_before_enabling_torque(setup_arm):
     assert ('torque', False) not in calls
 
 
+@pytest.mark.parametrize('bad_limits', [False, True])
+def test_startup_reads_firmware_travel_before_enabling_or_moving(setup_arm, monkeypatch, bad_limits):
+    config, clients = setup_arm
+    factory = arm_client.FeetechClient
+    def create(*args, **kwargs):
+        client = factory(*args, **kwargs)
+        def limits():
+            client.calls.append('limits')
+            if bad_limits:
+                raise OSError('limits unavailable')
+            return {1: (-1.5, -.5), 2: (-3., -1.), 3: (-4., -2.)}
+        client.read_sts_position_limits = limits
+        return client
+    monkeypatch.setattr(arm_client, 'FeetechClient', create)
+    arm = AmArmFeetech(config)
+    if bad_limits:
+        with pytest.raises(OSError):
+            arm.connect()
+        assert clients[0].calls == ['connect', 'read', 'limits', ('disconnect', False)]
+    else:
+        arm.connect()
+        assert clients[0].calls[2] == 'limits'
+        lower, upper = arm.model_limits
+        np.testing.assert_allclose(lower, [-.5, -1, -1])
+        np.testing.assert_allclose(upper, [.5, 1, 1])
+        arm.disconnect(disable_torque=False)
+
+
 def test_teach_then_restart_moves_slowly_to_the_same_initial_pose(setup_arm):
     config, clients = setup_arm
     arm = AmArmFeetech(config)
