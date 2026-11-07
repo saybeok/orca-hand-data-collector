@@ -11,9 +11,9 @@ joint_to_motor_map:
   shoulder_lift: 2
   elbow_flex: 3
 
-# +1 until flex/extend direction is verified against MuJoCo/IK.
+# Per-joint motor polarity; independent of Quest coordinates and hand tracking.
 joint_signs:
-  shoulder_pan: -1   # flipped 2026-09-04 (user: 좌우 반전)
+  shoulder_pan: 1    # 2026-11-07: reverse prior -1 after reported lateral inversion
   shoulder_lift: 1
   elbow_flex: 1
 
