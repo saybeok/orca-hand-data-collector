@@ -31,6 +31,9 @@ retarget:
     ring: 2.0
     pinky: 2.0
   pinch_smooth_transition: true
+  # Anchor both geometric goals to the preceding robot command on entry.
+  # Human distance then closes toward calibrated contact; opening releases it.
+  pinch_target_mode: entry_anchored
   pinch_max_joint_velocity_deg_s: 60.0
   pinch_alpha_max: 0.7
   scaling: 1.0

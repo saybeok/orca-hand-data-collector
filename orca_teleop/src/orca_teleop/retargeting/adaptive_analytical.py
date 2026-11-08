@@ -223,6 +223,9 @@ class AdaptiveAnalyticalRetargeter:
         self._taught_contacts = None
         self._last_taught_target = None
         self._last_solve_pinch_vectors = None
+        self._last_solve_surface_targets_cm = None
+        self._pinch_entry_vectors_cm = np.full((4, 3), np.nan)
+        self._pinch_entry_clearance_cm = np.full(4, np.nan)
         taught_path = self._retarget_cfg.get("contact_pose_library")
         if taught_path:
             from .contact_calibration import TaughtContacts
@@ -249,8 +252,8 @@ class AdaptiveAnalyticalRetargeter:
                 path if path.is_absolute() else self._config_dir / path, self)
             logger.info("Continuous skin-clearance candidate loaded; no recorded joint pose is enforced. "
                         "Passive-contact consistency is within 5 mm; powered contact is unverified. "
-                        "closure_margin_mm(index,middle,ring,pinky)=%s",
-                        (self._surface_contact_closure_margin_cm * 10).tolist())
+                        "closure_margin_mm(index,middle,ring,pinky)=%s | pinch_target_mode=%s",
+                        (self._surface_contact_closure_margin_cm * 10).tolist(), self._pinch_target_mode)
 
         self._filter = _LPFilter(float(self._retarget_cfg.get("lp_alpha", 0.15)))
         self._neutral_qpos_phys = self._build_neutral_qpos()
@@ -288,6 +291,9 @@ class AdaptiveAnalyticalRetargeter:
         self._last_pinch_diagnostic_s = -float("inf")
         self._last_taught_target = None
         self._last_solve_pinch_vectors = None
+        self._last_solve_surface_targets_cm = None
+        self._pinch_entry_vectors_cm.fill(np.nan)
+        self._pinch_entry_clearance_cm.fill(np.nan)
         if self._taught_contacts is not None:
             self._taught_contacts.reset()
 
@@ -332,6 +338,7 @@ class AdaptiveAnalyticalRetargeter:
         self._robot.compute_positions_and_jacobians(
             self._full_model_qpos(q), self._computed_frame_indices, self._contact_offsets)
         trace = dict(command_timestamp_ns=int(timestamp_ns),
+                     pinch_target_mode=self._pinch_target_mode,
                      solver_status=self._solver_status, solver_failures=self._solver_failures,
                      ik_deg={j: round(float(v), 3) for j, v in ik_deg.items()},
                      final_deg={j: round(float(v), 3) for j, v in final_deg.items()},
@@ -341,8 +348,7 @@ class AdaptiveAnalyticalRetargeter:
             trace['final_model_clearance_mm'] = np.round(distances * 1000, 3).tolist()
             if self._last_solve_pinch_vectors is not None:
                 # Reuse precisely the targets used by this frame's solver.
-                alphas = self._last_solve_alphas
-                targets = self._surface_contact_targets_cm(self._last_solve_pinch_vectors, alphas)
+                targets = self._last_solve_surface_targets_cm
                 trace['target_clearance_mm'] = np.round(targets * 10, 3).tolist()
                 trace['final_residual_mm'] = np.round(distances * 1000 - targets * 10, 3).tolist()
         return trace
@@ -412,7 +418,10 @@ class AdaptiveAnalyticalRetargeter:
         target_gaps = np.linalg.norm(target_vectors, axis=1)
         if self._surface_contacts is not None:
             clearances, _ = self._surface_contacts.distances(with_jacobian=False)
-            goals = self._surface_contact_targets_cm(target_vectors, self._compute_pinch_alpha(keypoints)) / M_TO_CM
+            targets = self._last_solve_surface_targets_cm
+            if targets is None:
+                targets = self._surface_contact_targets_cm(target_vectors, self._compute_pinch_alpha(keypoints))
+            goals = targets / M_TO_CM
             logger.info("Skin contact diag | model_clearance_mm(index,middle,ring,pinky)=%s | "
                         "target_clearance_mm=%s | residual_mm=%s | powered_contact_verified=false",
                         np.round(clearances*1000, 2).tolist(), np.round(goals*1000, 2).tolist(),
@@ -657,6 +666,15 @@ class AdaptiveAnalyticalRetargeter:
         if not np.isfinite(velocity) or velocity < 0:
             raise ValueError("pinch_max_joint_velocity_deg_s must be finite and non-negative")
         self._pinch_max_joint_velocity = np.deg2rad(velocity)
+        self._pinch_target_mode = cfg.get("pinch_target_mode", "landmark")
+        if self._pinch_target_mode not in ("landmark", "entry_anchored"):
+            raise ValueError("pinch_target_mode must be 'landmark' or 'entry_anchored'")
+        if self._pinch_target_mode == "entry_anchored" and (
+            not cfg.get("surface_contact_calibration") or cfg.get("contact_pose_library")
+            or self._w_pinch <= 0 or self._pinch_max_joint_velocity <= 0
+        ):
+            raise ValueError("entry_anchored targets require surface calibration, pinch control "
+                             "and a positive velocity bound, without taught contact poses")
         # An explicit operator tuning, separate from the fitted contact bias.
         # This asks for a smaller signed skin clearance, not a joint-angle
         # offset or a change to the stored physical contact measurements.
@@ -889,6 +907,12 @@ class AdaptiveAnalyticalRetargeter:
             upper = np.minimum(upper, init_qpos + step)
         for i, value in self._fixed_joint_pose.items():
             lower[i] = upper[i] = init_qpos[i] = value
+        # Capture the preceding emitted robot pose, before direct IP tracking
+        # changes init_qpos. Prepare once per advancing frame, never inside an
+        # objective/diagnostic: repeated evaluations must see the same goal.
+        target_pinch_vectors, surface_targets_cm = self._prepare_pinch_targets(
+            keypoints, init_qpos, alphas, target_pinch_vectors,
+        )
         taught = None
         if self._taught_contacts is not None:
             taught = self._taught_contacts.target(
@@ -920,19 +944,34 @@ class AdaptiveAnalyticalRetargeter:
         direct_free = self._thumb_ip_tracking == "direct_free" and not (
             self._w_pinch > 0 and np.any((alphas[1:] > 0) & (self._pinch_pair_weights > 0))
         )
-        if direct_free:
+        continuous_ip_release = (self._thumb_ip_tracking == "direct_free"
+                                 and self._pinch_target_mode == "entry_anchored")
+        if direct_free or continuous_ip_release:
             i = self._thumb_ip_index
             desired = (init_qpos[i] if thumb_ip_bend is None else
                        thumb_ip_bend - self._thumb_ip_rest_bend)
             target = float(np.clip(desired, lower[i], upper[i]))
-            # A fixed optimization variable: other fingers compensate for this
-            # measured flexion. Do not overwrite the solved pose afterwards.
-            lower[i] = upper[i] = target
-            init_qpos[i] = target
+            # Legacy direct_free fixes IP outside pinch. With anchored goals,
+            # widen its feasible interval continuously as pinch activates,
+            # rather than switching from fixed to fully free at alpha > 0.
+            # Interpolate *inside* this frame's ROM/velocity bounds, without
+            # changing the measured bend goal or overwriting the solved pose.
+            release = 0.0
+            if continuous_ip_release:
+                enabled = self._pinch_pair_weights > 0
+                activation = np.max(np.where(enabled, alphas[1:], 0))
+                activation = np.clip(activation / max(self._pinch_alpha_max, 1e-8), 0, 1)
+                release = activation**2 * (3-2*activation)
+            lower[i] = target + release * (lower[i]-target)
+            upper[i] = target + release * (upper[i]-target)
+            init_qpos[i] = np.clip(init_qpos[i], lower[i], upper[i])
         opt.set_lower_bounds(lower.tolist())
         opt.set_upper_bounds(upper.tolist())
         self._last_solve_pinch_vectors = target_pinch_vectors.copy()
         self._last_solve_alphas = alphas.copy()
+        self._last_solve_surface_targets_cm = (
+            None if surface_targets_cm is None else surface_targets_cm.copy()
+        )
 
         def objective(x, grad_out):
             loss, grad = self._loss_and_grad(
@@ -945,6 +984,7 @@ class AdaptiveAnalyticalRetargeter:
                 target_pinch_vectors,
                 thumb_ip_bend,
                 taught,
+                surface_targets_cm,
             )
             if grad_out.size > 0:
                 grad_out[:] = grad
@@ -1072,6 +1112,46 @@ class AdaptiveAnalyticalRetargeter:
                 + np.linalg.norm(target_pinch_vectors, axis=1)
                 - self._surface_contact_closure_margin_cm * closure)
 
+    def _prepare_pinch_targets(self, keypoints, previous_qpos, alphas, vectors):
+        """Freeze geometric goals from the robot's pinch-entry configuration.
+
+        Human distance controls progress, not the robot's absolute clearance.
+        Both the relative tip vector and the skin goal start at the same FK
+        pose. The entry is retained during a hold/reversal and cleared only on
+        release beyond d2; otherwise repeated frames would ratchet the target.
+        The endpoint remains the calibrated bias minus the configured margin.
+        This makes the *reference* monotone on approach when starting outside
+        contact, not a guarantee of monotone total IK motion or real contact.
+        """
+        if self._surface_contacts is None:
+            return vectors, None
+        goals = self._surface_contact_targets_cm(vectors, alphas)
+        if self._pinch_target_mode != "entry_anchored":
+            return vectors, goals
+        active = (alphas[1:] > 0) & (self._pinch_pair_weights > 0)
+        self._pinch_entry_vectors_cm[~active] = np.nan
+        self._pinch_entry_clearance_cm[~active] = np.nan
+        entering = active & ~np.isfinite(self._pinch_entry_clearance_cm)
+        if np.any(entering):
+            positions, _ = self._robot.compute_positions_and_jacobians(
+                self._full_model_qpos(previous_qpos), self._computed_frame_indices,
+                self._contact_offsets,
+            )
+            tips = positions[self._tip_indices]
+            self._pinch_entry_vectors_cm[entering] = ((tips[1:]-tips[0]) * M_TO_CM)[entering]
+            pairs = np.flatnonzero(entering)
+            clearance, _ = self._surface_contacts.distances(pairs, with_jacobian=False)
+            self._pinch_entry_clearance_cm[pairs] = clearance * M_TO_CM
+        distances = np.linalg.norm(keypoints[_MP_TIP_INDICES[1:]]-keypoints[4], axis=1) * M_TO_CM
+        progress = np.clip((self._pinch_d2-distances)/(self._pinch_d2-self._pinch_d1), 0, 1)
+        closure = progress**2 * (3-2*progress)
+        targets = vectors.copy()
+        targets[active] = (1-closure[active, None]) * self._pinch_entry_vectors_cm[active]
+        endpoint = self._surface_contacts.biases * M_TO_CM - self._surface_contact_closure_margin_cm
+        goals[active] = ((1-closure[active]) * self._pinch_entry_clearance_cm[active]
+                         + closure[active] * endpoint[active])
+        return targets, goals
+
     def _loss_and_grad(
         self,
         qpos_phys: np.ndarray,
@@ -1083,6 +1163,7 @@ class AdaptiveAnalyticalRetargeter:
         target_pinch_vectors: np.ndarray | None = None,
         thumb_ip_bend: float | None = None,
         taught_contact=None,
+        surface_targets_cm: np.ndarray | None = None,
     ) -> tuple[float, np.ndarray]:
         qpos_full = self._full_model_qpos(qpos_phys)
         positions, jacobians = self._robot.compute_positions_and_jacobians(
@@ -1203,7 +1284,8 @@ class AdaptiveAnalyticalRetargeter:
                 pairs = np.flatnonzero(surface_weights > 0)
                 if len(pairs):
                     clearance, derivative = self._surface_contacts.distances(pairs)
-                    desired = self._surface_contact_targets_cm(target_pinch_vectors, alphas)[pairs]
+                    desired = (self._surface_contact_targets_cm(target_pinch_vectors, alphas)
+                               if surface_targets_cm is None else surface_targets_cm)[pairs]
                     error = clearance * M_TO_CM - desired
                     total_loss += self._w_pinch * float(np.sum(
                         surface_weights[pairs] * _huber_loss(np.abs(error), self._huber_delta)))
