@@ -99,6 +99,60 @@ def test_startup_reads_firmware_travel_before_enabling_or_moving(setup_arm, monk
         arm.disconnect(disable_torque=False)
 
 
+def test_out_of_range_passive_pose_reports_joints_without_clipping_into_a_large_move(
+        setup_arm, monkeypatch):
+    config, clients = setup_arm
+    factory = arm_client.FeetechClient
+    scale = -2*np.pi/4096
+
+    def create(*args, **kwargs):
+        client = factory(*args, **kwargs)
+        # Read-only snapshot from the failing startup: motors were torque-off.
+        client.positions = np.array([2067, 224, 3137])*scale
+        client.read_sts_position_limits = lambda: {
+            mid: tuple(sorted(np.array(raw)*scale))
+            for mid, raw in {1: [1335, 2693], 2: [691, 2677], 3: [1151, 3032]}.items()
+        }
+        return client
+
+    monkeypatch.setattr(arm_client, 'FeetechClient', create)
+    with pytest.raises(ValueError) as raised:
+        AmArmFeetech(config).connect()
+    message = str(raised.value)
+    assert 'ID 2 (shoulder_lift)' in message and '41.0° 벗어남' in message
+    assert 'ID 3 (elbow_flex)' in message and '9.2° 벗어남' in message
+    assert 'ID 1 (' not in message
+    assert '시작 자세' in message
+    # Neither a goal write nor torque enable is allowed for a 41-degree jump.
+    assert clients[0].calls == ['connect', 'read', ('disconnect', False)]
+    assert not (config.parent/'initial_pose.json').exists()
+
+
+def test_small_endpoint_feedback_error_can_start_without_changing_firmware_limits(
+        setup_arm, monkeypatch):
+    config, clients = setup_arm
+    factory = arm_client.FeetechClient
+    scale = -2*np.pi/4096
+    limits = {mid: tuple(sorted(np.array(raw)*scale))
+              for mid, raw in {1: [1335, 2693], 2: [691, 2677], 3: [1151, 3032]}.items()}
+
+    def create(*args, **kwargs):
+        client = factory(*args, **kwargs)
+        client.positions = np.array([2108, 687, 2802])*scale
+        client.read_sts_position_limits = lambda: limits
+        return client
+
+    monkeypatch.setattr(arm_client, 'FeetechClient', create)
+    arm = AmArmFeetech(config)
+    arm.connect()
+    writes = [c[1] for c in clients[0].calls if isinstance(c, tuple) and c[0] == 'write']
+    np.testing.assert_allclose(writes[0], np.array([2108, 691, 2802])*scale)
+    lower, upper = arm.model_limits
+    assert lower[1] < 0 and upper[1] == pytest.approx(0)
+    np.testing.assert_allclose(arm._motor_limits, [limits[i] for i in [1, 2, 3]])
+    arm.disconnect(disable_torque=False)
+
+
 def test_teach_then_restart_moves_slowly_to_the_same_initial_pose(setup_arm):
     config, clients = setup_arm
     arm = AmArmFeetech(config)

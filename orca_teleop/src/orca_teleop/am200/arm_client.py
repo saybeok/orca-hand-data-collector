@@ -237,12 +237,31 @@ class AmArmFeetech:
 
     def _holdable_motor_position(self, measured):
         measured = np.asarray(measured, dtype=float).reshape(3)
+        if not np.isfinite(measured).all():
+            raise ValueError('Arm measured pose must contain three finite motor angles')
         limits = getattr(self, '_motor_limits', None)
         if limits is None:
             return measured
         clipped = np.clip(measured, limits[:, 0], limits[:, 1])
-        if np.max(abs(measured-clipped)) > np.deg2rad(1):
-            raise ValueError('Measured arm pose is more than 1 degree outside firmware limits')
+        outside = np.abs(measured-clipped)
+        invalid = np.flatnonzero(outside > np.deg2rad(1))
+        if invalid.size:
+            details = '; '.join(
+                f'ID {self._motor_ids[i]} ({self._joint_names[i]}): '
+                f'현재 {math.degrees(measured[i]):.1f}°, '
+                f'범위 [{math.degrees(limits[i, 0]):.1f}°, '
+                f'{math.degrees(limits[i, 1]):.1f}°], '
+                f'{math.degrees(outside[i]):.1f}° 벗어남'
+                for i in invalid
+            )
+            # Feedback can legitimately be outside the allowed command range
+            # with torque off. Clipping such a pose could command a large jump;
+            # report the actual joints rather than treating it as bad telemetry.
+            raise ValueError(
+                f'팔 현재 자세가 모터 설정 범위를 벗어났습니다 (허용 오차 1°). {details}. '
+                '팔을 손으로 받쳐 저장한 시작 자세 근처로 옮긴 뒤 다시 연결하세요. '
+                '범위 끝점으로 자동 이동하지 않았습니다.'
+            )
         return clipped
 
     def _validate_motor_target(self, motor):
