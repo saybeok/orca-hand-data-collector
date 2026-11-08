@@ -621,7 +621,7 @@ def test_direct_free_holds_thumb_on_degenerate_thumb_input(smooth_retargeter):
 
 
 @pytest.mark.parametrize('bend,gap_cm,expected_bend',
-                         [(53, None, 98.3), (60, 5, 88), (60, 0, 60), (90, 0, 90)])
+                         [(53, None, 98.3), (60, 5, 112.3), (60, 0, 112.3), (90, 0, 119.7)])
 def test_collection_profile_keeps_thumb_flexion_near_contact(bend, gap_cm, expected_bend):
     """Do not straighten a bent thumb merely because pinch becomes active.
 
@@ -644,7 +644,14 @@ def test_collection_profile_keeps_thumb_flexion_near_contact(bend, gap_cm, expec
     model_bend = np.rad2deg(q[r._thumb_ip_index] + r._thumb_ip_rest_bend)
     assert model_bend == pytest.approx(expected_bend, abs=5)
     if gap_cm == 0:
-        assert _tip_gap_cm(r, q) < 1.5
+        # Contact is calibrated at pad surfaces, not coincident URDF tip
+        # origins. A deeply bent tip can have separated origins while its
+        # pads satisfy the same contact target; check the optimized metric.
+        _positions(r, q)
+        clearance, _ = r._surface_contacts.distances(with_jacobian=False)
+        target = r._surface_contact_targets_cm(
+            r._compute_pinch_vectors(kp), r._compute_pinch_alpha(kp))/100
+        assert abs(clearance[0]-target[0])*1000 < 1
 
 
 @pytest.mark.parametrize('gain,input_bend', [(1, 40), (2, 53)])
@@ -727,6 +734,48 @@ def test_free_thumb_gain_blends_to_ordinary_pinch_without_changing_landmarks(smo
     assert np.rad2deg(targets[-1]) == pytest.approx(53)
     assert np.all(np.diff(targets) <= 1e-10)
     assert np.rad2deg(np.max(np.abs(np.diff(targets)))) < 2
+
+
+@pytest.mark.parametrize('gain', [0, -1, float('nan'), float('inf')])
+def test_invalid_continuous_thumb_ip_gain_is_rejected(smooth_retargeter, gain):
+    smooth_retargeter._retarget_cfg['thumb_ip_bend_gain'] = gain
+    with pytest.raises(ValueError, match='thumb_ip_bend_gain'):
+        smooth_retargeter._build_retarget_params()
+
+
+@pytest.mark.parametrize('tip', [8, 12, 16, 20])
+def test_continuous_thumb_gain_does_not_request_extension_on_approach_or_release(smooth_retargeter, tip):
+    r = smooth_retargeter
+    r._retarget_cfg.update(thumb_ip_bend_gain=2)
+    r._build_retarget_params()
+    kp = _free_thumb_pose(r, 53)
+    for gap in np.concatenate((np.linspace(.08, 0, 81), np.linspace(0, .08, 81))):
+        kp[tip] = kp[4] + [gap, 0, 0]
+        before = kp.copy()
+        # Same bend must have the same goal regardless of pair or distance.
+        assert np.rad2deg(r._thumb_ip_target_bend(kp)) == pytest.approx(98.289175, abs=1e-5)
+        np.testing.assert_array_equal(kp, before)
+
+
+def test_collection_profile_approach_keeps_thumb_bent_and_reduces_nominal_tip_gap():
+    r = AdaptiveAnalyticalRetargeter(
+        hand_config_path=str(HAND_CONFIG), urdf_path=str(URDF),
+        config_path=str(ROOT / 'configs/adaptive_analytical_orca_v1_pinch_calibrated.yaml'))
+    kp = _free_thumb_pose(r, 53)
+    previous = r._neutral_qpos_phys.copy()
+    gaps = []
+    for gap in (8, 6, 5, 4, 3, 2, 0):
+        kp[8] = kp[4] + [gap/100, 0, 0]
+        for _ in range(45):
+            q = r._solve(kp, dt_s=1/30)
+            assert np.max(abs(q-previous)) <= np.deg2rad(2)+1e-8
+            assert np.all(q >= r._lower_phys) and np.all(q <= r._upper_phys)
+            previous = q.copy()
+        bend = np.rad2deg(q[r._thumb_ip_index]+r._thumb_ip_rest_bend)
+        assert bend >= 93  # Old distance-dependent target settled near 53°.
+        gaps.append(_tip_gap_cm(r, q))
+    assert gaps[-1] < 1.0  # Nominal FK only; this does not verify powered contact.
+    assert gaps[-1] < gaps[0]/2
 
 
 def test_free_thumb_gain_still_respects_rom_and_velocity(smooth_retargeter):

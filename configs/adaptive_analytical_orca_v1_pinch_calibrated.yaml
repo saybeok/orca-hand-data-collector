@@ -15,11 +15,11 @@ retarget:
   pinch_diagnostics: true
   pinch_relax_tip_position: true
   thumb_ip_tracking: direct_free
-  # Current Quest sessions report up to ~53 deg, producing only ~45 deg
-  # of joint travel. Double free travel around the same joint zero (~90 deg),
-  # smoothly returning to ordinary bend targets as pinch activates.
+  # Double positive IP travel around the same joint zero in free motion AND
+  # pinch. Fading 2x to 1x on approach instructed the tip to straighten even
+  # when the operator held the same bend. ROM/velocity bounds still apply.
   # This is operator tuning, not a measurement of anatomical tracking accuracy.
-  thumb_ip_free_bend_gain: 2.0
+  thumb_ip_bend_gain: 2.0
   # Keep measured IP flexion in the objective even when a fingertip is close.
   # Fading it out allowed the pinch solver to straighten a visibly bent thumb.
   w_thumb_ip_bend: 50.0

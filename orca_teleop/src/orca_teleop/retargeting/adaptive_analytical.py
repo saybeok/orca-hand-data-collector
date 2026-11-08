@@ -625,7 +625,12 @@ class AdaptiveAnalyticalRetargeter:
         self._w_thumb_ip_bend = float(cfg.get("w_thumb_ip_bend", 0.0))
         if not np.isfinite(self._w_thumb_ip_bend) or self._w_thumb_ip_bend < 0:
             raise ValueError("w_thumb_ip_bend must be finite and non-negative")
-        self._thumb_ip_free_bend_gain = float(cfg.get("thumb_ip_free_bend_gain", 1.0))
+        self._thumb_ip_bend_gain = float(cfg.get("thumb_ip_bend_gain", 1.0))
+        if not np.isfinite(self._thumb_ip_bend_gain) or self._thumb_ip_bend_gain <= 0:
+            raise ValueError("thumb_ip_bend_gain must be finite and positive")
+        # Legacy profiles may explicitly amplify only free motion. Otherwise
+        # use one gain throughout approach, contact and release.
+        self._thumb_ip_free_bend_gain = float(cfg.get("thumb_ip_free_bend_gain", self._thumb_ip_bend_gain))
         if not np.isfinite(self._thumb_ip_free_bend_gain) or self._thumb_ip_free_bend_gain <= 0:
             raise ValueError("thumb_ip_free_bend_gain must be finite and positive")
         self._thumb_ip_bend_scope = cfg.get("thumb_ip_bend_scope", "pinch")
@@ -769,9 +774,9 @@ class AdaptiveAnalyticalRetargeter:
         tangent /= length
         self._thumb_ip_rest_bend = float(np.arctan2(distal @ tangent, distal @ proximal))
         if self._w_thumb_ip_bend > 0 or self._thumb_ip_tracking == "direct_free":
-            logger.info("Thumb IP tracking enabled: mode=%s, weight=%g, scope=%s, free_gain=%g, URDF rest bend=%.2f deg",
+            logger.info("Thumb IP tracking enabled: mode=%s, weight=%g, scope=%s, bend_gain=%g, free_gain=%g, URDF rest bend=%.2f deg",
                         self._thumb_ip_tracking, self._w_thumb_ip_bend, self._thumb_ip_bend_scope,
-                        self._thumb_ip_free_bend_gain,
+                        self._thumb_ip_bend_gain, self._thumb_ip_free_bend_gain,
                         np.rad2deg(self._thumb_ip_rest_bend))
 
     @staticmethod
@@ -788,11 +793,12 @@ class AdaptiveAnalyticalRetargeter:
         return float(np.arccos(np.clip(a @ b / norm, -1, 1)))
 
     def _thumb_ip_target_bend(self, keypoints: np.ndarray) -> float | None:
-        """Scale free positive IP travel, preserving extension and full pinches.
+        """Scale positive IP travel consistently, preserving extension.
 
         Raw landmarks and contact targets stay unchanged. The scaled target
         enters both direct tracking and the bend objective before solving;
         normal joint ROM and per-frame velocity bounds still apply.
+        Only a legacy free-only override changes gain with pinch distance.
         """
         bend = self._human_thumb_ip_bend(keypoints)
         if bend is None:
@@ -800,12 +806,12 @@ class AdaptiveAnalyticalRetargeter:
         if bend <= self._thumb_ip_rest_bend:
             return bend
         free = 1.0
-        if self._w_pinch > 0:
+        if self._w_pinch > 0 and self._thumb_ip_free_bend_gain != self._thumb_ip_bend_gain:
             alphas = self._compute_pinch_alpha(keypoints)[1:]
             active = np.where(self._pinch_pair_weights > 0, alphas, 0)
             activation = float(np.clip(active.max() / max(self._pinch_alpha_max, 1e-8), 0, 1))
             free = 1.0 - activation**2 * (3 - 2 * activation)
-        gain = 1.0 + free * (self._thumb_ip_free_bend_gain - 1.0)
+        gain = self._thumb_ip_bend_gain + free * (self._thumb_ip_free_bend_gain - self._thumb_ip_bend_gain)
         return self._thumb_ip_rest_bend + gain * (bend - self._thumb_ip_rest_bend)
 
     def _ingest_calibration_frame(self, normalized_joints: np.ndarray, source: str) -> None:
