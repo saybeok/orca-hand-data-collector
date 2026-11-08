@@ -13,7 +13,7 @@ joint_to_motor_map:
 
 # Per-joint motor polarity; independent of Quest coordinates and hand tracking.
 joint_signs:
-  shoulder_pan: 1    # 2026-11-07: reverse prior -1 after reported lateral inversion
+  shoulder_pan: -1   # 2026-11-08: reverse pan only after operator confirmed opposite lateral motion
   shoulder_lift: 1
   elbow_flex: 1
 

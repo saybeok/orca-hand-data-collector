@@ -208,7 +208,8 @@ def test_changed_motor_mapping_rejects_taught_pose_before_connect(setup_arm):
     assert len(clients) == 1
 
 
-def test_explicit_pan_fix_reverses_only_pan_and_keeps_taught_motor_home(setup_arm):
+@pytest.mark.parametrize('old_sign,new_sign', [(-1, 1), (1, -1)])
+def test_explicit_pan_fix_reverses_only_pan_and_keeps_taught_motor_home(setup_arm, old_sign, new_sign):
     import importlib.util
     from pathlib import Path
     script = Path(__file__).resolve().parents[2]/'scripts/migrate_arm_pan_home.py'
@@ -216,6 +217,9 @@ def test_explicit_pan_fix_reverses_only_pan_and_keeps_taught_motor_home(setup_ar
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     config, clients = setup_arm
+    settings = yaml.safe_load(config.read_text())
+    settings['joint_signs']['shoulder_pan'] = old_sign
+    config.write_text(yaml.safe_dump(settings))
     arm = AmArmFeetech(config)
     arm.connect()
     taught = arm.save_home_pose()
@@ -224,7 +228,7 @@ def test_explicit_pan_fix_reverses_only_pan_and_keeps_taught_motor_home(setup_ar
     old_target = clients[0].positions.copy()
     arm.disconnect(disable_torque=False)
     settings = yaml.safe_load(config.read_text())
-    settings['joint_signs']['shoulder_pan'] = 1
+    settings['joint_signs']['shoulder_pan'] = new_sign
     config.write_text(yaml.safe_dump(settings))
     path = config.parent/'initial_pose.json'
     before = path.read_bytes()
@@ -233,6 +237,7 @@ def test_explicit_pan_fix_reverses_only_pan_and_keeps_taught_motor_home(setup_ar
     result = migration.migrate(config, apply=True)
     assert Path(result['backup']).read_bytes() == before
     assert json.loads(path.read_text())['motor_rad'] == taught['motor_rad']
+    assert json.loads(path.read_text())['joint_signs'] == [new_sign, 1, 1]
     restarted = AmArmFeetech(config)
     restarted.connect()
     np.testing.assert_allclose(clients[1].positions, taught['motor_rad'])

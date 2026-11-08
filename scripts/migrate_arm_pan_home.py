@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Explicitly update only taught-home polarity metadata after the pan fix.
+"""Explicitly match taught-home pan polarity metadata to the arm config.
 
 No serial devices are opened and no motor positions are changed. The config
-must already specify shoulder_pan=+1; only an otherwise identical old -1 home
-is accepted. Without --apply this only reports the proposed metadata update.
+must already specify the desired shoulder_pan sign (+1 or -1); only an
+otherwise identical home with the opposite pan sign is accepted. Without
+--apply this only reports the proposed metadata update.
 """
 import argparse
 import json
@@ -23,8 +24,8 @@ def migrate(config_path, *, apply=False):
     config_path = Path(config_path).resolve()
     cfg = yaml.safe_load(config_path.read_text())
     signs = [float(cfg['joint_signs'][j]) for j in JOINTS]
-    if signs[0] != 1 or any(s not in (-1, 1) for s in signs):
-        raise ValueError('This migration requires the corrected shoulder_pan=+1 config')
+    if any(s not in (-1, 1) for s in signs):
+        raise ValueError('Arm joint signs must be +1 or -1')
     home_path = (config_path.parent/cfg['home_pose_file']).resolve()
     if not home_path.exists():
         return {'status': 'no_saved_home', 'path': str(home_path)}
@@ -39,7 +40,7 @@ def migrate(config_path, *, apply=False):
         raise ValueError('Home must contain three finite motor positions')
     if home.get('joint_signs') == signs:
         return {'status': 'already_matches', 'path': str(home_path)}
-    if home.get('joint_signs') != [-1., *signs[1:]]:
+    if home.get('joint_signs') != [-signs[0], *signs[1:]]:
         raise ValueError('Changes beyond shoulder_pan polarity detected; not modified')
     result = {'status': 'proposed', 'path': str(home_path),
               'old_signs': home['joint_signs'], 'new_signs': signs,
@@ -48,8 +49,9 @@ def migrate(config_path, *, apply=False):
         return result
     backup = home_path.with_name(f'{home_path.stem}.before_pan_fix_{time.time_ns()}.json')
     backup.write_bytes(original)
+    old_sign = home['joint_signs'][0]
     home['joint_signs'] = signs
-    home['pan_polarity_migration'] = {'old_sign': -1, 'new_sign': 1,
+    home['pan_polarity_migration'] = {'old_sign': old_sign, 'new_sign': signs[0],
                                      'updated_at_unix_s': time.time(),
                                      'motor_positions_changed': False}
     fd, temporary = tempfile.mkstemp(prefix=home_path.name+'.', dir=home_path.parent)

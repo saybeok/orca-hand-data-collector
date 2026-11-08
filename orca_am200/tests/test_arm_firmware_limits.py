@@ -58,12 +58,14 @@ def test_motor_writer_rejects_unsupported_goal_instead_of_silently_clipping_driv
 
 
 @pytest.mark.parametrize('folded', [False, True])
-def test_ik_never_accumulates_impossible_lift_and_can_move_forward_after_backwards(folded):
+@pytest.mark.parametrize('pan_sign', [-1, 1])
+def test_ik_never_accumulates_impossible_lift_and_can_move_forward_after_backwards(folded, pan_sign):
     c = Am200ActionComposer.from_model_path(MODEL, hand_config_path=HAND,
         config=ArmMappingConfig(scale=1, max_velocity_rad_s=np.deg2rad(30),
                                 max_acceleration_rad_s2=np.deg2rad(90)))
     outer = FoldThreeFingersComposer(HAND, c) if folded else c
-    lower, upper = arm([1, 1, 1]).model_limits
+    signs = np.array([pan_sign, 1, 1])
+    lower, upper = arm(signs).model_limits
     _configure_arm_limits(SimpleNamespace(arm_joint_limits=(lower, upper)), outer)
     np.testing.assert_array_equal(c.joint_map.upper[:3], upper)
     hand = OrcaJointPositions(dict(yaml.safe_load(HAND.read_text())['neutral_position']))
@@ -78,7 +80,7 @@ def test_ik_never_accumulates_impossible_lift_and_can_move_forward_after_backwar
     positions = np.asarray(frames)
     assert np.max(positions[:, 1]) <= 1e-9
     assert np.min(positions[91:211, 1]) < np.deg2rad(-10)
-    motors = HOME+positions
+    motors = HOME+signs*positions
     assert np.all(motors >= MOTOR_LIMITS[:, 0]-1e-8)
     assert np.all(motors <= MOTOR_LIMITS[:, 1]+1e-8)
     assert np.max(abs(np.diff(positions, axis=0))) <= np.deg2rad(30)/30+1e-7
