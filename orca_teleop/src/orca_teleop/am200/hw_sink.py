@@ -7,6 +7,7 @@ import os
 import queue
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +136,14 @@ class Am200HardwareSink(RecordableSink):
                 arm = AmArmFeetech(self._arm_config_path, max_step_rad=self._arm_max_step_rad)
                 arm.connect()
                 self._arm = arm
+                # Policies dispatch directly to this sink, without the teleop
+                # composer's firmware-bound IK or ACT's CommandLimiter. Use the
+                # same measured servo travel for their canonical target clipping.
+                limits = arm.model_limits
+                if limits is not None:
+                    lower, upper = self._map.lower.copy(), self._map.upper.copy()
+                    lower[self._map.arm_slice], upper[self._map.arm_slice] = limits
+                    self._map = replace(self._map, lower=lower, upper=upper)
 
             if self._enable_hand:
                 hand = OrcaHand(str(self._hand_config_path))

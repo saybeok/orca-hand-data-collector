@@ -9,6 +9,8 @@ from orca_core import OrcaJointPositions
 
 from orca_teleop.am200 import Am200ActionComposer, ArmMappingConfig
 from orca_teleop.am200.arm_client import AmArmFeetech
+from orca_teleop.am200.canonical import RobotJointCommand
+from orca_teleop.am200.hw_sink import Am200HardwareSink
 from orca_teleop.hand_modes import FoldThreeFingersComposer
 from orca_teleop.ingress.server import HandLandmarks
 from orca_teleop.pipeline import _configure_arm_limits
@@ -61,6 +63,45 @@ def test_motor_writer_rejects_unsupported_goal_instead_of_silently_clipping_driv
     assert not writes
     value.write_model_rad(np.deg2rad([0, -10, 5]))
     assert len(writes) == 1
+
+
+@pytest.mark.parametrize('signs', [[1, 1, 1], [-1, 1, 1]])
+def test_direct_policy_dispatch_uses_connected_servo_travel(monkeypatch, signs):
+    """A policy needs no IK composer to respect this robot's taught-home limits."""
+    value = arm(signs)
+    value._motor_ids = [1, 2, 3]
+    value._speed, value._max_torque = 1500, 700
+    writes = []
+    value._client = SimpleNamespace(
+        write_positions_sync=lambda _ids, positions, **_kw: writes.append(positions.copy()))
+    value.connect = lambda: None
+    module = 'orca_teleop.am200.hw_sink'
+    monkeypatch.setattr(f'{module}._check_bus_ports', lambda *_args: None)
+    monkeypatch.setattr(f'{module}.AmArmFeetech', lambda *_args, **_kw: value)
+    sink = Am200HardwareSink(enable_hand=False)
+    sink._cameras = SimpleNamespace(open=lambda: None, ensure_live=lambda: None)
+    sink.connect()
+    lower, upper = value.model_limits
+    hand_lower = sink._map.lower[3:].copy()
+    hand_upper = sink._map.upper[3:].copy()
+
+    # Firmware lift upper bound is zero; the static model allows positive lift.
+    # Test both ends and an interior target through the public dispatch API.
+    for requested, expected in ((upper + 0.1, upper), (lower - 0.1, lower),
+                                ((lower + upper) / 2, (lower + upper) / 2)):
+        target = sink._map.ref.copy()
+        target[:3] = requested
+        original = target.copy()
+        sink.dispatch_action(RobotJointCommand.now(tuple(sink.joint_ids), target))
+        np.testing.assert_allclose(writes[-1], HOME + value._signs * expected, atol=1e-6)
+        assert np.all(writes[-1] >= MOTOR_LIMITS[:, 0] - 1e-6)
+        assert np.all(writes[-1] <= MOTOR_LIMITS[:, 1] + 1e-6)
+        np.testing.assert_array_equal(target, original)
+    np.testing.assert_array_equal(sink._map.lower[3:], hand_lower)
+    np.testing.assert_array_equal(sink._map.upper[3:], hand_upper)
+    # The low-level guard still rejects a bypass of the canonical sink.
+    with pytest.raises(ValueError, match='firmware'):
+        value.write_model_rad(np.array([0, np.deg2rad(1), 0]))
 
 
 @pytest.mark.parametrize('folded', [False, True])
