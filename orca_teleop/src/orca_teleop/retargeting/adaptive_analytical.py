@@ -220,6 +220,16 @@ class AdaptiveAnalyticalRetargeter:
         self._build_joint_mapping()
         self._build_frame_indices()
         self._build_retarget_params()
+        if self._pinch_objective == "relative_vector":
+            # One kinematic fingertip definition for shape, distal direction,
+            # scale and relative position. These frame origins are proxies,
+            # not measured skin-pad contacts or transmission calibration.
+            self._frame_offsets = self._contact_offsets
+            logger.info("Pinch objective: relative_vector | shared fingertip frames; "
+                        "continuous shape release; no hull-clearance/pose target. "
+                        "long_finger_tracking=%s, pinch_proximal_dir_weight=%g | "
+                        "AKO-inspired hand-only adaptation; powered contact unverified.",
+                        self._long_finger_tracking, self._w_pinch_proximal_dir)
         self._taught_contacts = None
         self._last_taught_target = None
         self._last_solve_pinch_vectors = None
@@ -339,10 +349,22 @@ class AdaptiveAnalyticalRetargeter:
             self._full_model_qpos(q), self._computed_frame_indices, self._contact_offsets)
         trace = dict(command_timestamp_ns=int(timestamp_ns),
                      pinch_target_mode=self._pinch_target_mode,
+                     pinch_objective=self._pinch_objective,
+                     long_finger_tracking=self._long_finger_tracking,
+                     pinch_proximal_dir_weight=self._w_pinch_proximal_dir,
                      solver_status=self._solver_status, solver_failures=self._solver_failures,
                      ik_deg={j: round(float(v), 3) for j, v in ik_deg.items()},
                      final_deg={j: round(float(v), 3) for j, v in final_deg.items()},
                      powered_contact_verified=False)
+        if self._pinch_objective == "relative_vector":
+            positions, _ = self._robot.frame_points(self._computed_frame_indices, self._contact_offsets)
+            tips = positions[self._tip_indices] * 1000
+            vectors = tips[1:]-tips[0]
+            trace['final_model_tip_gap_mm'] = np.linalg.norm(vectors, axis=1).tolist()
+            if self._last_solve_pinch_vectors is not None:
+                targets = self._last_solve_pinch_vectors * 10
+                trace['target_tip_gap_mm'] = np.linalg.norm(targets, axis=1).tolist()
+                trace['final_tip_vector_error_mm'] = np.linalg.norm(vectors-targets, axis=1).tolist()
         if self._surface_contacts is not None:
             distances, _ = self._surface_contacts.distances(with_jacobian=False)
             trace['final_model_clearance_mm'] = np.round(distances * 1000, 3).tolist()
@@ -416,6 +438,22 @@ class AdaptiveAnalyticalRetargeter:
         if target_vectors is None:
             target_vectors = self._compute_pinch_vectors(keypoints)
         target_gaps = np.linalg.norm(target_vectors, axis=1)
+        if self._w_pinch_proximal_dir > 0 and active:
+            def bend_angles(proximal, distal):
+                norms = np.linalg.norm(proximal, axis=1) * np.linalg.norm(distal, axis=1)
+                cosine = np.sum(proximal*distal, axis=1) / np.maximum(norms, 1e-12)
+                values = np.degrees(np.arccos(np.clip(cosine, -1, 1)))
+                return [None if n < 1e-12 else round(float(v), 1)
+                        for n, v in zip(norms, values, strict=True)]
+            human_proximal = keypoints[_MP_PIP_INDICES[1:]]-keypoints[_MP_TIP_INDICES[1:]-3]
+            human_distal = keypoints[_MP_TIP_INDICES[1:]]-keypoints[_MP_DIP_INDICES[1:]]
+            model_proximal = positions[self._pip_indices[1:]]-positions[self._base_indices[1:]]
+            model_distal = tips[1:]-positions[self._dip_indices[1:]]
+            logger.info("Finger bend diag | order=index,middle,ring,pinky | "
+                        "input_proximal_distal_angle_deg=%s | model_proximal_distal_angle_deg=%s | "
+                        "pinch_proximal_dir_weight=%g | model angles are not independent link measurements",
+                        bend_angles(human_proximal, human_distal),
+                        bend_angles(model_proximal, model_distal), self._w_pinch_proximal_dir)
         if self._surface_contacts is not None:
             clearances, _ = self._surface_contacts.distances(with_jacobian=False)
             targets = self._last_solve_surface_targets_cm
@@ -606,6 +644,8 @@ class AdaptiveAnalyticalRetargeter:
         self._contact_offsets = [np.zeros(3, dtype=np.float64) for _ in self._computed_frame_names]
         contact_profile = self._retarget_cfg.get("contact_calibration")
         if contact_profile:
+            if self._retarget_cfg.get("pinch_objective") == "relative_vector":
+                raise ValueError("relative_vector uses shared fingertip frames without point calibration")
             from .contact_calibration import load_offsets
 
             profile_path = Path(contact_profile)
@@ -631,6 +671,26 @@ class AdaptiveAnalyticalRetargeter:
         self._w_dir = float(cfg.get("w_dir", 10.0))
         self._w_full_hand = float(cfg.get("w_full_hand", 1.0))
         self._w_pinch = float(cfg.get("w_pinch", 0.0))
+        self._pinch_objective = cfg.get("pinch_objective", "adaptive")
+        if self._pinch_objective not in ("adaptive", "relative_vector"):
+            raise ValueError("pinch_objective must be 'adaptive' or 'relative_vector'")
+        self._long_finger_tracking = cfg.get("long_finger_tracking", "palm_position")
+        if (self._long_finger_tracking not in ("palm_position", "bone_directions")
+                or (self._long_finger_tracking == "bone_directions"
+                    and self._pinch_objective != "relative_vector")):
+            raise ValueError("long_finger_tracking must be 'palm_position' or "
+                             "'bone_directions' (relative_vector only)")
+        self._w_pinch_proximal_dir = float(cfg.get("w_pinch_proximal_dir", 0.0))
+        if (not np.isfinite(self._w_pinch_proximal_dir) or self._w_pinch_proximal_dir < 0
+                or (self._w_pinch_proximal_dir > 0 and self._long_finger_tracking != "bone_directions")):
+            raise ValueError("w_pinch_proximal_dir must be finite and non-negative; "
+                             "a positive weight requires bone_directions")
+        if self._pinch_objective == "relative_vector" and (
+            any(cfg.get(k) for k in ("contact_pose_library", "contact_calibration", "surface_contact_calibration"))
+            or cfg.get("pinch_target_mode", "landmark") != "landmark" or self._w_pinch <= 0
+        ):
+            raise ValueError("relative_vector requires positive w_pinch and landmark targets, "
+                             "without contact pose/point/surface calibration")
         self._w_thumb_ip_bend = float(cfg.get("w_thumb_ip_bend", 0.0))
         if not np.isfinite(self._w_thumb_ip_bend) or self._w_thumb_ip_bend < 0:
             raise ValueError("w_thumb_ip_bend must be finite and non-negative")
@@ -755,7 +815,8 @@ class AdaptiveAnalyticalRetargeter:
         chains = np.stack([neutral_positions[indices] for indices in
                            (self._base_indices, self._pip_indices,
                             self._dip_indices, self._tip_indices)], axis=1)
-        self._urdf_bone_lengths = 0.9 * np.linalg.norm(np.diff(chains, axis=1), axis=2).sum(axis=1)
+        self._shape_bone_lengths = np.linalg.norm(np.diff(chains, axis=1), axis=2)
+        self._urdf_bone_lengths = 0.9 * self._shape_bone_lengths.sum(axis=1)
 
     def _build_thumb_ip_reference(self) -> None:
         """Derive the thumb's zero-angle bone bend from URDF tip-frame geometry.
@@ -945,14 +1006,15 @@ class AdaptiveAnalyticalRetargeter:
             self._w_pinch > 0 and np.any((alphas[1:] > 0) & (self._pinch_pair_weights > 0))
         )
         continuous_ip_release = (self._thumb_ip_tracking == "direct_free"
-                                 and self._pinch_target_mode == "entry_anchored")
+                                 and (self._pinch_target_mode == "entry_anchored"
+                                      or self._pinch_objective == "relative_vector"))
         if direct_free or continuous_ip_release:
             i = self._thumb_ip_index
             desired = (init_qpos[i] if thumb_ip_bend is None else
                        thumb_ip_bend - self._thumb_ip_rest_bend)
             target = float(np.clip(desired, lower[i], upper[i]))
-            # Legacy direct_free fixes IP outside pinch. With anchored goals,
-            # widen its feasible interval continuously as pinch activates,
+            # Legacy direct_free fixes IP outside pinch. With anchored or
+            # relative-vector goals, widen its interval continuously,
             # rather than switching from fixed to fully free at alpha > 0.
             # Interpolate *inside* this frame's ROM/velocity bounds, without
             # changing the measured bend goal or overwriting the solved pose.
@@ -1046,6 +1108,8 @@ class AdaptiveAnalyticalRetargeter:
             self._pinch_alpha_max,
         )
         alphas_4[self._fixed_fingers[1:]] = 0
+        if self._pinch_objective == "relative_vector":
+            alphas_4[self._pinch_pair_weights <= 0] = 0
         return np.concatenate([[float(np.max(alphas_4))], alphas_4])
 
     def _compute_pinch_vectors(self, keypoints: np.ndarray) -> np.ndarray:
@@ -1078,7 +1142,10 @@ class AdaptiveAnalyticalRetargeter:
 
     def _compute_tip_vectors(self, keypoints: np.ndarray) -> np.ndarray:
         palm = self._target_palm(keypoints)
-        return ((keypoints[_MP_TIP_INDICES] - palm) * self._scaling * M_TO_CM).astype(np.float64)
+        targets = ((keypoints[_MP_TIP_INDICES] - palm) * self._scaling * M_TO_CM).astype(np.float64)
+        if self._long_finger_tracking == "bone_directions":
+            targets[1:] = self._long_finger_shape_targets(keypoints)[-1]
+        return targets
 
     def _compute_tip_dirs(self, keypoints: np.ndarray) -> np.ndarray:
         vectors = keypoints[_MP_TIP_INDICES] - keypoints[_MP_DIP_INDICES]
@@ -1090,7 +1157,30 @@ class AdaptiveAnalyticalRetargeter:
         pip_vectors = (keypoints[_MP_PIP_INDICES] - palm) * self._segment_scaling[:, 0:1]
         dip_vectors = (keypoints[_MP_DIP_INDICES] - palm) * self._segment_scaling[:, 1:2]
         tip_vectors = (keypoints[_MP_TIP_INDICES] - palm) * self._segment_scaling[:, 2:3]
-        return np.vstack([pip_vectors, dip_vectors, tip_vectors]) * M_TO_CM
+        targets = np.stack([pip_vectors, dip_vectors, tip_vectors]) * M_TO_CM
+        if self._long_finger_tracking == "bone_directions":
+            targets[:, 1:] = self._long_finger_shape_targets(keypoints)
+        return targets.reshape(15, 3)
+
+    def _long_finger_shape_targets(self, keypoints: np.ndarray) -> np.ndarray:
+        """Feasible MCP-relative chains; preserve the working thumb targets.
+
+        Global hand scale belongs to inter-finger pinch distances. Reusing it
+        for each palm-relative chain can ask a straight, short robot finger
+        to fold towards a shorter human target. Copy segment directions onto
+        the robot's own bases/lengths instead. In v1 PIP and DIP frame origins
+        coincide: their zero-length segment stays zero rather than pulling
+        one robot hinge towards two different human joints.
+        """
+        chain = np.stack([keypoints[indices] for indices in
+                          (_MP_TIP_INDICES-3, _MP_PIP_INDICES,
+                           _MP_DIP_INDICES, _MP_TIP_INDICES)], axis=1)[1:]
+        bones = np.diff(chain, axis=1)
+        norms = np.linalg.norm(bones, axis=2, keepdims=True)
+        directions = bones / np.maximum(norms, 1e-12)
+        segments = directions * self._shape_bone_lengths[1:, :, None]
+        targets = np.cumsum(segments, axis=1)
+        return targets.transpose(1, 0, 2) * M_TO_CM
 
     def _robot_palm_from_positions(self, positions_m: np.ndarray) -> np.ndarray:
         return (
@@ -1183,23 +1273,39 @@ class AdaptiveAnalyticalRetargeter:
         j_tip = jacobians_cm[self._tip_indices]
         j_pip = jacobians_cm[self._pip_indices]
         j_dip = jacobians_cm[self._dip_indices]
+        shape_origins = np.repeat(palm_pos[None, :], len(FINGERS), axis=0)
+        j_shape_origins = np.repeat(j_palm[None, :, :], len(FINGERS), axis=0)
+        if self._long_finger_tracking == "bone_directions":
+            # Use the *current* own MCP origin/Jacobian, not a frozen base:
+            # the v1 base also translates as abduction rotates its offset.
+            shape_origins[1:] = positions_cm[self._base_indices[1:]]
+            j_shape_origins[1:] = jacobians_cm[self._base_indices[1:]]
 
         total_grad = np.zeros_like(qpos_phys, dtype=np.float64)
 
         # A human palm-to-tip position can conflict with a robot's achievable
         # pinch location. Smoothly release only this absolute tip objective for
         # the involved fingers (including the shared thumb). Keep direction,
-        # full-chain posture, temporal regularization, and other fingers intact.
+        # temporal regularization and other fingers. The relative-vector
+        # mode also releases the conflicting full-chain position objectives.
         # Identical rule for all four pairs; no angle or per-finger correction.
         position_weights = alphas
-        if self._pinch_relax_tip_position and self._w_pinch > 0:
+        full_hand_weights = 1.0 - alphas
+        if (self._pinch_relax_tip_position or self._pinch_objective == "relative_vector") and self._w_pinch > 0:
             active = np.clip(alphas[1:] / max(self._pinch_alpha_max, 1e-8), 0, 1)
             active = np.where(self._pinch_pair_weights > 0, active, 0)
             active = active**2 * (3 - 2 * active)
             release = np.concatenate(([float(active.max())], active))
             position_weights = alphas * (1 - release)
+            if self._pinch_objective == "relative_vector":
+                # Releasing only the separate tip objective leaves the full
+                # chain's palm-relative tip/PIP/DIP positions pulling the same
+                # pinching fingers elsewhere. Use complementary shape/pinch
+                # priorities, while keeping distal orientation and temporal
+                # regularization. Uninvolved/disabled fingers stay unchanged.
+                full_hand_weights = (1.0 - alphas) * (1.0 - release)
 
-        robot_tip_vec = tip_pos - palm_pos
+        robot_tip_vec = tip_pos - shape_origins
         diff_pos = robot_tip_vec - target_tip_vectors
         dist_pos = np.linalg.norm(diff_pos, axis=1)
         loss_tip_pos = _huber_loss(dist_pos, self._huber_delta)
@@ -1207,12 +1313,24 @@ class AdaptiveAnalyticalRetargeter:
         diff_normed_pos = diff_pos / (dist_pos[:, None] + 1e-8)
 
         for i in range(len(FINGERS)):
-            j_diff = j_tip[i] - j_palm
+            j_diff = j_tip[i] - j_shape_origins[i]
             total_grad += position_weights[i] * self._w_pos * grad_pos[i] * (diff_normed_pos[i] @ j_diff)
 
         robot_tip_dir_vec = tip_pos - dip_pos
         robot_tip_dir_norm = np.linalg.norm(robot_tip_dir_vec, axis=1, keepdims=True)
         robot_tip_dirs = robot_tip_dir_vec / (robot_tip_dir_norm + 1e-8)
+        direction_weights = alphas.copy()
+        if self._long_finger_tracking == "bone_directions":
+            # A short robot finger can reduce a palm-position residual by
+            # folding even when the operator's finger is straight. Distal
+            # direction must also constrain free motion, not only a pinch.
+            # Preserve the working thumb rule and its direct IP tracking.
+            activation = np.clip(alphas[1:] / max(self._pinch_alpha_max, 1e-8), 0, 1)
+            free = 1.0 - activation**2 * (3-2*activation)
+            # At a fully closed pinch retain exactly the established
+            # orientation weight; the added free-motion term vanishes.
+            direction_weights[1:] += (1.0-alphas[1:]) * free
+        direction_weights[self._fixed_fingers] = 0
         diff_dir = robot_tip_dirs - target_tip_dirs
         dist_dir = np.linalg.norm(diff_dir, axis=1)
         loss_tip_dir = _huber_loss(dist_dir, self._huber_delta_dir)
@@ -1225,7 +1343,7 @@ class AdaptiveAnalyticalRetargeter:
             j_norm = (np.eye(3) - np.outer(unit_dir, unit_dir)) / (norm + 1e-8)
             j_diff = j_tip[i] - j_dip[i]
             total_grad += (
-                alphas[i] * (not self._fixed_fingers[i]) * self._w_dir * grad_dir[i]
+                direction_weights[i] * self._w_dir * grad_dir[i]
                 * (diff_normed_dir[i] @ j_norm @ j_diff)
             )
 
@@ -1233,9 +1351,9 @@ class AdaptiveAnalyticalRetargeter:
         target_dip = target_full_hand_vectors[5:10]
         target_tip = target_full_hand_vectors[10:15]
 
-        diff_pip = (pip_pos - palm_pos) - target_pip
-        diff_dip = (dip_pos - palm_pos) - target_dip
-        diff_tip = (tip_pos - palm_pos) - target_tip
+        diff_pip = (pip_pos - shape_origins) - target_pip
+        diff_dip = (dip_pos - shape_origins) - target_dip
+        diff_tip = (tip_pos - shape_origins) - target_tip
 
         dist_pip = np.linalg.norm(diff_pip, axis=1)
         dist_dip = np.linalg.norm(diff_dip, axis=1)
@@ -1255,17 +1373,45 @@ class AdaptiveAnalyticalRetargeter:
         diff_normed_tip = diff_tip / (dist_tip[:, None] + 1e-8)
 
         for i in range(len(FINGERS)):
-            grad_coeff = (1.0 - alphas[i]) * (not self._fixed_fingers[i]) * self._w_full_hand / 3.0
-            total_grad += grad_coeff * grad_pip[i] * (diff_normed_pip[i] @ (j_pip[i] - j_palm))
-            total_grad += grad_coeff * grad_dip[i] * (diff_normed_dip[i] @ (j_dip[i] - j_palm))
-            total_grad += grad_coeff * grad_tip_full[i] * (diff_normed_tip[i] @ (j_tip[i] - j_palm))
+            grad_coeff = full_hand_weights[i] * (not self._fixed_fingers[i]) * self._w_full_hand / 3.0
+            total_grad += grad_coeff * grad_pip[i] * (diff_normed_pip[i] @ (j_pip[i] - j_shape_origins[i]))
+            total_grad += grad_coeff * grad_dip[i] * (diff_normed_dip[i] @ (j_dip[i] - j_shape_origins[i]))
+            total_grad += grad_coeff * grad_tip_full[i] * (diff_normed_tip[i] @ (j_tip[i] - j_shape_origins[i]))
 
         loss_tip_dir_vec = self._w_pos * loss_tip_pos + self._w_dir * loss_tip_dir
         loss_full = self._w_full_hand * loss_full_hand
         total_loss = float(np.sum((~self._fixed_fingers)
-                                 * (alphas * loss_tip_dir_vec + (1.0 - alphas) * loss_full)))
-        if self._pinch_relax_tip_position and self._w_pinch > 0:
+                                 * (alphas * loss_tip_dir_vec + full_hand_weights * loss_full)))
+        if (self._pinch_relax_tip_position or self._pinch_objective == "relative_vector") and self._w_pinch > 0:
             total_loss += float(np.sum((position_weights - alphas) * self._w_pos * loss_tip_pos))
+        total_loss += float(np.sum((direction_weights-alphas*(~self._fixed_fingers))
+                                   * self._w_dir * loss_tip_dir))
+
+        if self._w_pinch_proximal_dir > 0 and self._w_pinch > 0:
+            # Distal direction alone allows MCP to over-flex while PIP opens.
+            # Keep the live MCP->PIP direction during pinch as well. Targets
+            # are unit directions, not absolute tip positions or fixed angles.
+            # Only enabled, non-fixed long fingers with an active pinch enter
+            # this term; free motion and the thumb's own objectives are intact.
+            for i in range(1, len(FINGERS)):
+                if self._fixed_fingers[i] or self._pinch_pair_weights[i-1] <= 0:
+                    continue
+                weight = self._w_pinch_proximal_dir * alphas[i]
+                if weight <= 0:
+                    continue
+                bone = pip_pos[i]-positions_cm[self._base_indices[i]]
+                length = np.linalg.norm(bone)
+                target_length = np.linalg.norm(target_pip[i])
+                if length < 1e-8 or target_length < 1e-8:
+                    continue
+                direction = bone/length
+                error = direction-target_pip[i]/target_length
+                distance = np.linalg.norm(error)
+                j_direction = (np.eye(3)-np.outer(direction, direction))/length
+                j_bone = j_pip[i]-jacobians_cm[self._base_indices[i]]
+                total_loss += float(weight * _huber_loss(distance, self._huber_delta_dir))
+                total_grad += (weight * _huber_grad(distance, self._huber_delta_dir)
+                    * (error/max(distance, 1e-12) @ j_direction @ j_bone))
 
         if self._w_pinch > 0.0 and target_pinch_vectors is not None:
             pinch_weights = alphas[1:]

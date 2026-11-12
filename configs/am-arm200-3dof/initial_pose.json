@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "motor_ids": [
+    1,
+    2,
+    3
+  ],
+  "joint_names": [
+    "shoulder_pan",
+    "shoulder_lift",
+    "elbow_flex"
+  ],
+  "joint_signs": [
+    -1.0,
+    1.0,
+    1.0
+  ],
+  "port": "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B79018828-if00",
+  "motor_rad": [
+    -3.2336315008629315,
+    -1.059980724428978,
+    -4.2982141676555665
+  ],
+  "captured_at_unix_s": 1793883411.5470042,
+  "captured_method": "read_only_motor_snapshot_with_endpoint_clamp",
+  "measured_raw": [
+    2108,
+    687,
+    2802
+  ],
+  "target_raw": [
+    2108,
+    691,
+    2802
+  ],
+  "servo_limits_raw": {
+    "1": [
+      1335,
+      2693
+    ],
+    "2": [
+      691,
+      2677
+    ],
+    "3": [
+      1151,
+      3032
+    ]
+  },
+  "endpoint_adjustment_deg": [
+    0.0,
+    0.3515625,
+    0.0
+  ],
+  "pan_polarity_migration": {
+    "old_sign": 1.0,
+    "new_sign": -1.0,
+    "updated_at_unix_s": 1794108521.6322105,
+    "motor_positions_changed": false
+  }
+}

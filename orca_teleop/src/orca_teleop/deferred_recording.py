@@ -237,7 +237,8 @@ def _convert_capture_locked(root, progress):
             streaming_encoding=bool(video), encoder_threads=2, encoder_queue_maxsize=30,
             image_writer_processes=0, image_writer_threads=0)
         if video:
-            dataset._streaming_encoder = CheckedStreamingEncoder(dataset._streaming_encoder, features, capture['fps'])
+            dataset._streaming_encoder = CheckedStreamingEncoder(
+                dataset._streaming_encoder, features, capture['fps'], wait_for_encoder=True)
         for index, path in enumerate(episodes):
             episode = json.loads(path.read_text())
             if episode['index'] != index:

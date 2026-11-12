@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 from orca_core import OrcaJointPositions
 
 from orca_teleop.am200 import Am200ActionComposer, ArmMappingConfig
@@ -12,6 +13,12 @@ from orca_teleop.ingress.server import HandLandmarks
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL = ROOT / "orca_am200/robot_model/am_arm200_orca_right.xml"
+
+
+@pytest.fixture(autouse=True)
+def assembly_joint_schema(monkeypatch):
+    config = yaml.safe_load((ROOT / 'configs/orcahand-right-v1-feetech/config.yaml').read_text())
+    monkeypatch.setattr(OrcaJointPositions, '_default_joint_ids', tuple(config['joint_ids']))
 
 
 def composer(limited=True):

@@ -84,6 +84,13 @@ class Collector:
             'sources': {name: parse_camera_spec(os.environ.get(
                 f'ORCA_CAMERA_{name.upper()}', f'{name}:0')).index for name in CAMERAS},
         }
+        defaults = root / 'configs/collector.defaults.json'
+        if not demo and defaults.exists():
+            portable = json.loads(defaults.read_text())
+            allowed = {'task', 'target', 'velocity', 'acceleration', 'fold_three_fingers'}
+            if set(portable) - allowed:
+                raise ValueError('수집 기본 설정에는 저장 경로나 장치 입력을 넣을 수 없습니다.')
+            self.settings.update(portable)
         path = self.config_dir / ('demo_settings.json' if demo else 'settings.json')
         if path.exists():
             self.settings.update(json.loads(path.read_text()))

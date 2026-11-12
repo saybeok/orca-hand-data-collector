@@ -12,6 +12,18 @@ retarget:
   w_dir: 10.0
   w_full_hand: 1.0
   w_pinch: 4.0
+  # AKO-inspired hand-only objective in the existing adaptive optimizer:
+  # relative fingertip vectors + distal direction + complementary shape.
+  # URDF tip origins are kinematic proxies, not measured physical pad points.
+  pinch_objective: relative_vector
+  # Free long-finger posture: copy bone directions onto the robot's own
+  # lengths/MCP origins; keep distal direction tracking on outside pinches.
+  # Explicit in saved session configs to distinguish the earlier vector mode.
+  long_finger_tracking: bone_directions
+  # During pinch retain MCP->PIP direction as well as distal direction.
+  # Discourages over-flexing MCP while straightening PIP to match a tip.
+  # Soft orientation objective, not a joint-angle floor or recorded pose.
+  w_pinch_proximal_dir: 20.0
   pinch_diagnostics: true
   pinch_relax_tip_position: true
   thumb_ip_tracking: direct_free
@@ -25,39 +37,19 @@ retarget:
   w_thumb_ip_bend: 50.0
   thumb_ip_bend_scope: always
   pinch_pair_weights:
-    # Prioritize thumb-index contact over anatomical posture near a pinch.
+    # Apply the same objective/priority to every thumb-finger pair.
     index: 8.0
-    middle: 2.0
-    ring: 2.0
-    pinky: 2.0
+    middle: 8.0
+    ring: 8.0
+    pinky: 8.0
   pinch_smooth_transition: true
-  # Anchor both geometric goals to the preceding robot command on entry.
-  # Human distance then closes toward calibrated contact; opening releases it.
-  pinch_target_mode: entry_anchored
+  # Human relative direction and continuously rescaled distance remain the
+  # target throughout the pinch. No frozen entry vector or recorded pose.
+  pinch_target_mode: landmark
   pinch_max_joint_velocity_deg_s: 60.0
   pinch_alpha_max: 0.7
   scaling: 1.0
-  segment_scaling:
-    thumb:
-    - 1.0
-    - 1.0
-    - 1.0
-    index:
-    - 1.0
-    - 1.03
-    - 1.1
-    middle:
-    - 1.0
-    - 1.0
-    - 1.0
-    ring:
-    - 1.0
-    - 1.0
-    - 1.0
-    pinky:
-    - 1.05
-    - 1.15
-    - 1.15
+  # Long-finger shape lengths come from FK, without empirical segment scales.
   pinch_thresholds_cm:
     index:
       # Auto-scaled landmark distance: zero target gap at 3 cm or closer,
@@ -78,14 +70,8 @@ retarget:
     x: 0.0
     y: 0.0
     z: 0.0
-  surface_contact_calibration: ../data/contact_calibration/full_hand_surface.json
-  # Close index/middle an additional 2 mm; all pairs now use a 10 mm margin.
-  # Separate runtime tuning; recorded contacts and fitted biases remain unchanged.
-  surface_contact_closure_margin_mm:
-    index: 10.0
-    middle: 10.0
-    ring: 10.0
-    pinky: 10.0
+  # No nearest-hull distance or extra penetration margin in this objective.
+  # The passive 24-pose data remain available for independent diagnostics.
 robot_frames:
   right:
     palm: right_palm

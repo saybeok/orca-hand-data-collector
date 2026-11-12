@@ -96,6 +96,35 @@ class SkinContactGeometry:
                 jacobians.append(derivative[self.r._model_q_indices_np])
         return np.asarray(distances), np.asarray(jacobians)
 
+    def inspect_pair(self, pair):
+        """Explain the closest hull points at the last FK pose, not pad contact.
+
+        Local points are expressed in their distal-link frames. The coal
+        normal/nearest points can change discontinuously under penetration.
+        This is an inspection API; the realtime objective is unchanged.
+        """
+        if pair not in range(4):
+            raise ValueError("Contact pair must be an integer from 0 to 3")
+        robot = self.r._robot
+        selected = [self.shapes[i] for i in (0, pair+1)]
+        transforms = [robot.data.oMf[g[2]] * g[3] for g in selected]
+        transforms = [self.coal.Transform3s(t.rotation, t.translation) for t in transforms]
+        result = self.coal.DistanceResult()
+        distance = self.coal.distance(selected[0][1], transforms[0], selected[1][1],
+                                      transforms[1], self.request, result)
+        points = [np.asarray(result.getNearestPoint1()), np.asarray(result.getNearestPoint2())]
+        local = [robot.data.oMf[g[2]].rotation.T @ (p-robot.data.oMf[g[2]].translation)
+                 for g, p in zip(selected, points, strict=True)]
+        values = np.r_[distance, *points, *local, np.asarray(result.normal)]
+        if not np.isfinite(values).all():
+            raise ValueError("Nonfinite contact hull inspection")
+        return dict(signed_hull_clearance_mm=float(distance*1000),
+                    nearest_world_mm=[(p*1000).tolist() for p in points],
+                    nearest_distal_local_mm=[(p*1000).tolist() for p in local],
+                    distal_frames=[self.frames[0], self.frames[pair+1]],
+                    separation_normal_world=np.asarray(result.normal).tolist(),
+                    desired_pad_contact_verified=False)
+
 
 def fit_clearance_biases(distances):
     """Four contacts/pair fit a robust scalar bias; final two only validate."""

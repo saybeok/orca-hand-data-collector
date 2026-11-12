@@ -3,6 +3,11 @@
 set -euo pipefail
 task_root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 cd "$task_root"
+source "$task_root/env.sh"
+
+if [[ "${1:-}" == --check-only ]]; then
+  exec "$task_root/orca_teleop/.venv/bin/python" "$task_root/scripts/check_collector_setup.py"
+fi
 
 if ! command -v uv >/dev/null; then
   echo "uv를 먼저 설치하고 터미널을 다시 여세요: https://docs.astral.sh/uv/getting-started/installation/" >&2
@@ -15,8 +20,8 @@ sudo install -m 0644 configs/udev/70-orca-quest.rules /etc/udev/rules.d/70-orca-
 sudo udevadm control --reload-rules
 
 # A virtualenv is machine/path-specific; do not copy .venv from the old PC.
-uv sync --project orca_teleop --python 3.11 --extra learning
-uv pip install --python orca_teleop/.venv/bin/python 'mujoco==3.6.0'
+uv sync --locked --project orca_teleop --python 3.11 --extra learning
+"$task_root/orca_teleop/.venv/bin/python" "$task_root/scripts/check_collector_setup.py" --initialize
 /usr/bin/python3 - <<'PY'
 import tkinter
 from pathlib import Path

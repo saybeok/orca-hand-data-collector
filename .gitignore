@@ -1,6 +1,5 @@
-# Machine-specific environments and caches
+# Virtualenv / caches (do not upload)
 .venv/
-**/.git.upstream/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
@@ -8,22 +7,37 @@
 .ruff_cache/
 *.egg-info/
 .uv/
+
+# Nested official clones' original git dirs (kept locally as .git.upstream)
+**/.git.upstream/
+
+# Editor / OS
 .DS_Store
 .idea/
 .vscode/
 *.swp
+
+# Logs and local runtime
 *.log
+/tmp/
 .env
 .env.*
+.aws/
+.codex/
+.agents/
 
-# Demonstrations, GUI settings/logs, exports and diagnostics stay local.
+# Local demonstrations, checkpoints, session state and exports
 /data/*
 !/data/contact_calibration/
 /data/contact_calibration/*
 !/data/contact_calibration/full_hand_contacts.json
 !/data/contact_calibration/full_hand_surface.json
 !/data/contact_calibration/full_hand_taught.json
+!/data/contact_calibration/powered_contacts.json
+/outputs/
 /media/
 /research/
-/tmp/
+configs/**/calibration.backup-*.yaml
+
+# Optional huge generated renders
 orca_am200/renders/

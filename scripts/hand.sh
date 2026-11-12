@@ -16,6 +16,8 @@
 #   ./hand.sh contacts fit         validate a separate contact-point retarget profile offline
 #   ./hand.sh contacts fit-surface fit empirical skin clearances for continuous retargeting
 #   ./hand.sh contacts teach       use recorded contact configurations as pinch targets
+#   ./hand.sh contacts verify --execute   manually jog one powered pinch pair, record actual contact
+#   ./hand.sh contacts audit        inspect recorded powered poses offline
 #   ./hand.sh recenter --motors N [N ...] [--apply]
 #                                 move a motor's encoder seam off its travel
 #
@@ -79,6 +81,9 @@ for baud in MOTOR_BAUD_RATES[motor_type]:
     exec "$PY" "$ORCA_HAND_ROOT/scripts/check_thumb_ip.py" "$@"
     ;;
   contacts)
+    if [[ "${1:-}" == verify || "${1:-}" == audit ]]; then
+      exec "$PY" "$ORCA_HAND_ROOT/scripts/check_pinch_contact.py" "$@"
+    fi
     exec "$PY" "$ORCA_HAND_ROOT/scripts/calibrate_hand_contacts.py" "$@"
     ;;
   tension|calibrate|neutral)

@@ -1,7 +1,33 @@
-# ORCA Hand v1 (Feetech, right) setup
+# ORCA Hand v1 + AM-ARM200: teleoperation and data collection
 
-Teleoperation stack for a v1 ORCA Hand with Feetech HLS servos, driven from a
-USB webcam through MediaPipe.
+Quest WebXR teleoperation and three-camera LeRobot collection for the physical
+3-DoF AM-ARM200 arm and 17-DoF right ORCA Hand v1 Feetech. Webcam/MediaPipe and
+MuJoCo entry points are also included.
+
+## 새 PC 설치 (현재 수집 구성, 2026-11-12)
+
+수집 전용 PC에서는 [orca-hand-data-collector](https://github.com/saybeok/orca-hand-data-collector)의
+한국어 설치 안내를 사용하세요. 이 레포에도 동일한 최신 제어·리타겟팅·수집 코드를 보관합니다.
+
+```bash
+git clone https://github.com/saybeok/orca-hand-data-collector.git
+cd orca-hand-data-collector
+# uv 설치 후 실행: https://docs.astral.sh/uv/getting-started/installation/
+./scripts/install_collector_ubuntu.sh
+# 로그아웃/로그인 후
+./scripts/collector_ui.sh
+```
+
+설치기는 Python 3.11과 잠금 파일의 의존성을 설치하고 장치 없이 모델/GUI/인코더를
+점검합니다. 같은 로봇의 저장된 팔 초기 자세를 처음 한 번 복원하며, 이미 저장된 자세는
+덮어쓰지 않습니다. 기본 수집 지시는 `move the bottle.`, 팔 명령 속도/가속도는
+30°/s·90°/s²입니다. 기존 PC의 저장된 설정이 있으면 그 설정을 우선합니다.
+새 PC에서는 카메라 세 역할과 저장 폴더를 앱에서 다시 선택하세요. `.venv`는 복사하지 않습니다.
+
+설치만 확인하려면 `./scripts/install_collector_ubuntu.sh --check-only`를 실행하세요.
+모터·카메라를 열거나 움직이지 않습니다. 수집 데이터와 학습 체크포인트는 Git에 넣지 않습니다.
+공개 수집본은 [Hugging Face](https://huggingface.co/datasets/saybeok03/orca-hand-bottle)에
+있고, `collection-v2-165`는 165개 에피소드·141,740프레임의 고정 버전입니다.
 
 ## Layout
 
@@ -30,13 +56,53 @@ success counter and the dataset folder. Connect teleop first, then use **녹화
 시작**, **성공 저장**, **실패 · 재시도**, and **세션 종료**. Only saved trials count
 towards the target (default 50). Stop/closing the app discards the unfinished
 trial and finalizes previously saved episodes. Wait for finalization before
-disconnecting hardware. Unlike the terminal collector, this app does **not**
-automatically move home between trials: reposition through teleop, then explicitly
-start the next recording. The camera preview stays available during recording
+disconnecting hardware. The app uses the saved arm initial pose for recording start, successful save,
+failed retry and session close. Return motions are outside the recorded trial;
+release and re-engage the left-hand clutch after a return. The camera preview stays available during recording
 through the recorder, without opening each USB camera twice.
 
+The app starts maximized, with a large RealSense view and two supporting views.
+Click a camera to make it the main view; double-click to open a separate
+enlargement. F11 toggles application fullscreen and Escape exits it. The
+equal-size option shows three side-by-side views. Previews fit their actual
+available area, preserve aspect ratio, and keep the recording feed's full
+640x480 resolution. Collection settings, devices and logs live in sidebar tabs;
+record/save/retry/stop stay visible below the videos.
+
 Settings and session logs are in `data/collector_ui/`; real LeRobot datasets are
-in `data/lerobot/`. Each dataset also records the hand calibration/configuration,
+under `data/lerobot/`. Recording saves JPEG-95 capture sessions in a separate writer process,
+with bounded local IPC and acknowledged durable saves. This keeps JPEG work
+outside the teleoperation interpreter. Video encoding and image statistics
+run after collection.
+After ending collection, click **LeRobot 일괄 변환** and select a session or its
+parent directory. Verified LeRobot output appears in each session's `lerobot/`
+subdirectory; capture sources remain available for retries. CLI conversion:
+`orca_teleop/.venv/bin/python orca_teleop/scripts/convert_recordings.py --source data/lerobot`.
+Only the converted directory is ready for Hugging Face upload/training.
+Live arm IK consumes the newest Quest wrist pose independently of finger
+optimization. Single-slot control mailboxes retain recalibration requests and
+brief clutch-release events while replacing old poses. The separate dataset
+queue still records at 30 Hz, using the last successfully dispatched complete
+20-DoF command, not a command waiting to be sent. Restart the teleop session
+after updating. `Arm control | ... input-to-command ...` in the session log
+reports PC-side input-to-command computation time, not headset-to-motor latency.
+On hardware connection, the arm's servo position limits are read and converted
+into the taught-home coordinate frame before binding IK. This prevents an
+unreachable servo goal from accumulating as a fictitious arm pose. The firmware
+limits and saved home are not rewritten. A home at a servo endpoint still has
+no travel in that direction; teach an interior pose if both directions are needed.
+With torque off, the measured arm can fall outside the servo's allowed command
+range. Startup rejects deviations greater than 1 degree before staging a goal
+or enabling torque, and reports each affected motor and its deviation. Support
+the arm and manually restore it near the saved initial pose before reconnecting;
+do not widen this tolerance to bypass a large displacement.
+This unit's shoulder-pan polarity was changed from +1 to -1 on 2026-11-08
+after the operator confirmed opposite lateral motion. Existing taught homes
+with the opposite polarity can be updated
+explicitly with `orca_teleop/.venv/bin/python scripts/migrate_arm_pan_home.py --apply`.
+The helper backs up the home and changes only its pan-polarity metadata; it
+opens no serial devices and preserves the stored motor positions.
+Each dataset also records the hand calibration/configuration,
 joint ordering and connect-time arm motor reference in `collection_session.json`
 and `collection_*` files. The arm reference is preserved for later coordinate
 conversion; it is **not** a globally fixed mechanical zero or a completed π0.5
@@ -47,7 +113,7 @@ robot buses or cameras. It writes dummy hand-only state/action, **not** a real
 20-DoF demonstration, under `data/collector_demo/`.
 
 To move to another Ubuntu PC, export the **modified working files**, including
-motor mapping, calibration, contact profile and meshes:
+motor mapping, calibration, saved arm initial pose, contact profile and meshes:
 
 ```bash
 ./scripts/export_collector.sh
@@ -68,6 +134,103 @@ verify the three views. The two HD cameras have duplicate serials, so explicitly
 assign them to USB ports. Do not copy `.venv` from the old PC. The export excludes
 virtualenvs, git metadata and recorded datasets; copy existing datasets separately
 if needed. Installing on a second PC does not require recalibrating the same hand.
+
+### Local ACT baseline (bottle demonstrations, 2026-11-08)
+
+The local training entry point uses the installed LeRobot 0.4.4 ACT trainer
+([official ACT guide](https://huggingface.co/docs/lerobot/act)):
+
+```bash
+cd /home/lee/orca_hand
+bash scripts/train_act_local.sh
+```
+
+This explicitly selects the three sessions in
+`configs/act_bottle_20261108_sources.json`: 14 + 4 + 12 saved episodes after the
+11.1-second capture was excluded. It preserves source captures and builds one
+derived dataset at `data/act/bottle_20261108/capture/lerobot/`. Compatible camera
+features, joint order, units, motor calibration and arm reference are required.
+JPEG/joint payloads are hard-linked to avoid duplicating raw files on disk;
+the derived capture is immutable. Use a new destination for changed sources.
+The preparation manifest maps every derived episode to its source session and
+source episode. Failed retries and `data/excluded_recordings/` are not selected.
+
+The recorded task is `move the bottle.`. Inputs are bottom, wrist and RealSense
+RGB images at 640x480 plus the measured 20-DoF state. Targets are the recorded
+20-DoF commands in canonical model radians at 30 Hz. No joint sign, zero,
+retargeting or camera mapping is changed for training.
+
+A deterministic split reserves one episode from each session: 27 train and 3
+held out, listed in `collection_act_preparation.json` / `collection_act_split.json`.
+Numeric normalization uses only the 27 training episodes; the original complete
+statistics are kept in `meta/stats_all_episodes.json`. Images use fixed ImageNet
+normalization. Held-out episodes are not used for gradient updates. This is an
+episode split from the same collection, not a claim of unseen-scene performance.
+
+The RTX 3060 6GB preset keeps the standard ResNet-18 / 512-wide ACT, CVAE,
+100-step action chunk, learning rate 1e-5 and KL weight 10. It uses FP16,
+batch size 4, 2 loader workers, 20,000 updates and checkpoints every 5,000 updates.
+`n_action_steps=10` configures later inference to replan after ten commands;
+training still predicts the complete 100-step chunk. Command-line arguments
+override the preset, for example `--steps=100 --save_freq=100` for a short run.
+
+Outputs go to a new `outputs/train/act_bottle_<timestamp>/` directory, overridable
+with `ORCA_ACT_OUTPUT`. The final model is under
+`checkpoints/last/pretrained_model/`; optimizer/RNG state is saved alongside it.
+Resume with the installed `lerobot-train` command and
+`--config_path=<run>/checkpoints/last/pretrained_model/train_config.json --resume=true`
+using the same `ACCELERATE_MIXED_PRECISION=fp16` setting. The launcher disables
+Hub upload, telemetry and W&B. ResNet-18 ImageNet weights must already be cached
+for offline training. It opens no cameras or motor ports; deployment on the
+physical robot is a separate operation.
+
+### Run the trained ACT on the physical robot
+
+As of 2026-11-09, new training runs follow `data/act/active_dataset.json`.
+The active `bottle_20261108_min20/capture/lerobot/` dataset excludes recordings
+shorter than 20 seconds: 29 episodes remain, with the same 27 training episodes
+and 2 held-out episodes. The excluded 19.2-second episode was held out in the
+completed run, so it did not contribute training gradients. Failed retries
+were already discarded by the recorder. The original 30-episode dataset is
+retained for checkpoint reproducibility; it is not an additional collection.
+The completed checkpoint's inference default continues using that original
+snapshot and its saved normalizers. No retraining or upload is part of curation.
+Raw payloads and unchanged video streams are shared without re-encoding;
+curated metadata/data rows expose only retained episodes. The curation manifest
+records source indices and the recovery location.
+
+The 20,000-step checkpoint from the local run is the default for this wrapper:
+
+```bash
+cd /home/lee/orca_hand
+# Check saved model/processors against a held-out frame; opens no hardware.
+bash scripts/run_act_hw.sh --offline
+# Check the three live cameras and inference; opens no motor ports.
+bash scripts/run_act_hw.sh --check-only
+# Close collection/teleop first, then run one physical 30-second rollout.
+bash scripts/run_act_hw.sh --execute --seconds 30
+```
+
+No Quest or retargeter is used: live RGB + measured joint positions feed ACT,
+and saved checkpoint processors unnormalize its 20 canonical-radian targets.
+The runner loads the checkpoint's saved ImageNet/numeric normalizers, rather
+than rebuilding them from dataset statistics. Camera USB selectors come from
+the collector's `data/collector_ui/settings.json`; repeat `--camera` to override
+all three explicitly. Camera names/resolutions must match training.
+
+The taught arm zero, signs, motor IDs and hand configuration/calibration must
+match the training snapshot. Connection uses the existing slow taught-home
+startup, then arm target shaping uses 30 deg/s and 90 deg/s² by default, matching
+collection; hand target increments are limited to 120 deg/s. These limit
+commands, not independently measured link speeds. ACT retains its trained
+100-step prediction chunks and replans after ten commands, at the recorded
+30 Hz control rate. These checks do not establish physical task success.
+
+After the requested duration, the arm returns to its taught pose. Ctrl+C or an
+inference/read error stops dispatch and closes while preserving the arm hold,
+without a return motion. `--policy-path` and `--dataset-root` select another
+compatible local checkpoint/dataset. The default command is check-only; this
+code never executes physical motion without `--execute`.
 
 ### Physical camera selection on Linux
 
@@ -277,11 +440,42 @@ states produce identical solutions.
 
 The input bend is the angle between landmarks 2->3 and 3->4. The robot's signed
 bone bend is `thumb_dip + rest_bend`; the v1 rest bend (about 7.71 degrees) is
-derived from URDF geometry and hinge direction. The `w_thumb_ip_bend: 5.0`
+derived from URDF geometry and hinge direction. The `w_thumb_ip_bend: 50.0`
 soft objective remains active during pinches with `thumb_ip_bend_scope: always`.
 For older profiles `thumb_ip_tracking` defaults to `soft` and bend scope defaults
 to `pinch`. Use `thumb_ip_tracking: soft` to compare the preceding always-soft
 tracking. No motor ID, calibration, or physical ROM is changed.
+
+The collection profile uses `thumb_ip_bend_gain: 2.0` for positive thumb-IP
+travel in both free motion and pinch. At a constant 53-degree input the bend
+target stays about 98.3 degrees (90.6 degrees of joint travel). Previously the
+free-only 2x gain faded to 1x near contact, requesting extension down to a
+53-degree bone bend during approach. The constant gain removes that changing
+target without changing contact margins or joint limits.
+The thumb-index approach range is now 5 to 3 cm in auto-scaled landmark
+coordinates (previously 6 to 3 cm); the other pairs retain 5 to 2 cm.
+This is continuous target/weight blending, not DexPilot's on/off hysteresis.
+An explicit legacy `thumb_ip_free_bend_gain` still overrides free-motion gain
+only; profiles with neither key keep gain 1. Contact remains a soft IK goal,
+and the physical grasp must be checked after reconnecting.
+
+The collection profile now selects `pinch_target_mode: entry_anchored`. When
+each enabled pair enters its approach range, the previous emitted robot pose
+provides both its thumb-to-tip vector and signed skin clearance. A smoothstep
+of human distance from d2 to d1 then shrinks that vector toward zero and moves
+the clearance toward the existing calibrated bias minus closure margin. This
+avoids interpreting a human landmark distance as a robot skin gap that can
+request reopening an already-close robot at onset. The entry is frozen during
+holds and reversals, released at d2, and cleared on retargeter reset/fixed-hand
+mode changes. Objective evaluation and diagnostics use the same frozen targets.
+With direct-free thumb tracking in this mode, the IP feasible interval widens
+continuously with pinch activation, from the tracked angle to the existing
+per-frame joint bounds. It no longer switches from fixed to fully free at the
+first nonzero activation. The bend objective remains active throughout.
+Other profiles retain the default `landmark` mapping. The final contact target,
+thumb gain, joint limits and velocity bound are unchanged. This is a local
+reference-generation change, not a paper implementation or sensor feedback;
+it does not guarantee monotone total IK motion or physical pad contact.
 
 Three human points provide flexion magnitude, not signed hyperextension; bad
 tracking can still give the wrong target. Degenerate thumb segments skip this
@@ -378,19 +572,78 @@ changes refuse stale profiles. After changing tendon tension, recalibrate the
 motors and collect new contacts. For a new session use, for example,
 `--samples data/contact_calibration/contacts_v2.json` on **both** commands.
 
-For a **continuous** alternative to the failed point fit, the existing 24
-records can calibrate an empirical distal-skin clearance target:
+The collector and `--pinch-calibrated` now use an **AKO-inspired relative-vector
+objective inside `adaptive_analytical`**. Despite its historical filename,
+`configs/adaptive_analytical_orca_v1_pinch_calibrated.yaml` no longer loads the
+passive surface fit. Thumb-to-finger vectors remain active through full pinch,
+instead of fading into a nearest-hull distance. Shape, distal direction,
+scaling and pinch share the same URDF fingertip origins. Palm-relative tip and
+chain posture goals fade smoothly for the participating fingers; distal
+direction, temporal regularization, thumb IP tracking and ROM/velocity bounds
+remain. All four pairs use the same priority. Folded fingers remain fixed
+inside the solver and have no pinch objective. No recorded pose is selected.
+
+The current profile explicitly records `long_finger_tracking: bone_directions`.
+Index/middle/ring/pinky shape targets copy the operator's segment directions
+onto the robot's own segment lengths, measured from each **current MCP frame**
+with its Jacobian. In v1 the PIP/DIP frame origins coincide; the corresponding
+zero-length segment is preserved. This avoids forcing one robot hinge towards
+two different human joint positions, or curling a straight robot finger to
+reach an underscaled palm-relative target. Distal-direction tracking stays
+active in free motion for these four fingers. Thumb targets, pinch scaling,
+thresholds and thumb IP gain remain unchanged. Older configs without this key
+retain palm-relative shape tracking. Reconnect to load the new profile; no
+hardware calibration is needed for this software change.
+
+During a pinch, `w_pinch_proximal_dir: 20.0` retains the participating long
+finger's MCP-to-PIP direction alongside its distal direction. Matching only
+the distal direction allowed MCP over-flexion with PIP straightening while
+the nominal tip still reached the thumb. This soft directional term adds no
+fixed joint angle, pose replay or angle floor. It is zero outside pinch and
+for disabled/fixed fingers; the thumb's own targets are unchanged. Older
+profiles default to weight zero. `Finger bend diag` compares the live human
+and model proximal-to-distal angles for all four fingers. These are model
+diagnostics, not independent measurements of powered physical finger angles.
+
+This adapts the relative-position/orientation and complementary-priority
+principles of [Xin et al.](https://arxiv.org/html/2506.09384v2), rather than
+reproducing its full arm-hand optimizer. The existing 3-DoF arm controller is
+independent. Normalized distal directions, Huber losses, Hermite distance
+mapping and local thresholds remain ORCA-specific choices, not paper defaults.
+The fingertip origins are kinematic proxies: model coincidence does not prove
+physical pad contact. A motor encoder is not an independent link-angle sensor.
+No new motor calibration, joint zero, `ref`, mapping or physical contact pose
+is inferred from the manual example. Existing 24-pose records are preserved.
+
+```bash
+./scripts/teleop_am200_hw.sh --no-arm --pinch-calibrated --hand-feedback-debug
+```
+
+Reconnect teleoperation after updating; an already running worker retains its
+loaded model/profile. Startup must report `Pinch objective: relative_vector`.
+`Hand command trace` reports `final_model_tip_gap_mm`, `target_tip_gap_mm` and
+`final_tip_vector_error_mm`; it does not label them measured skin clearance.
+The previous surface implementation remains available for explicit comparison:
+
+```bash
+./scripts/teleop_am200_hw.sh --no-arm \
+  --retarget-config "$PWD/configs/adaptive_analytical_orca_v1_pinch_surface.yaml"
+```
+
+For the **preceding surface-distance candidate**, the existing 24 records can
+calibrate an empirical distal-skin clearance target:
 
 ```bash
 # Offline; reuses the existing recording and preserves motor calibration.
 ./scripts/hand.sh contacts fit-surface
-./scripts/teleop_am200_hw.sh --no-arm --pinch-calibrated --hand-feedback-debug
+./scripts/teleop_am200_hw.sh --no-arm \
+  --retarget-config "$PWD/configs/adaptive_analytical_orca_v1_pinch_surface.yaml" --hand-feedback-debug
 # Compare the preceding continuous point objective:
 ./scripts/teleop_am200_hw.sh --no-arm --pinch-refined --hand-feedback-debug
 ```
 
-`--pinch-calibrated` selects the separate
-`configs/adaptive_analytical_orca_v1_pinch_calibrated.yaml`. The backend remains
+This historical candidate uses
+`configs/adaptive_analytical_orca_v1_pinch_surface.yaml`. The backend remains
 `adaptive_analytical`. As a pair closes, its point-vector objective blends into
 a signed convex-skin clearance objective **inside the same optimizer**. Its
 Jacobian follows the two closest skin points, including their angular motion.
@@ -429,9 +682,9 @@ measurements. `Pinch diag` continues to report tip-origin distances separately;
 those origins need not coincide with this surface objective. The original
 profiles, 24 raw records and motor limits are retained for comparison.
 
-The current calibrated YAML uses per-pair `surface_contact_closure_margin_mm`:
-index and middle **8 mm**, ring and pinky **10 mm**, following the operator's
-report that ring/pinky still under-closed at 8 mm. Scalar values remain valid
+The saved preceding surface YAML uses per-pair `surface_contact_closure_margin_mm`
+of **10 mm** for each pair. This candidate is no longer the collector default.
+Scalar values remain valid
 and apply the same margin to every pair; a mapping must name all four pairs.
 At full pinch these values request that much less signed clearance relative
 to the fitted empirical bias. The extra closure fades smoothly to zero as that pair

@@ -1,0 +1,538 @@
+{
+  "schema": 1,
+  "method": "powered_contact_check",
+  "fingerprint": "230c5fe61a1c7dd16cfdf89a137113c55c7bc5701635553cc3677db1280acd07",
+  "samples": [
+    {
+      "timestamp_ns": 1794112477215696707,
+      "finger": "index",
+      "operator_confirmed_pad_contact": false,
+      "command_deg": {
+        "thumb_mcp": -33.059532165527344,
+        "thumb_abd": 42.0,
+        "thumb_pip": 40.585243225097656,
+        "thumb_dip": -0.9785537719726562,
+        "index_abd": 15.405050277709961,
+        "index_mcp": 41.890289306640625,
+        "index_pip": 13.447219848632812
+      },
+      "encoder_estimated_deg": {
+        "thumb_mcp": -33.059532165527344,
+        "thumb_abd": 42.09748458862305,
+        "thumb_pip": 40.585243225097656,
+        "thumb_dip": -0.9785537719726562,
+        "index_abd": 15.405050277709961,
+        "index_mcp": 41.890289306640625,
+        "index_pip": 13.447219848632812
+      },
+      "encoder_is_independent_joint_sensor": false,
+      "command_model": {
+        "signed_hull_clearance_mm": 52.998215248659434,
+        "nearest_world_mm": [
+          [
+            10.533977063850013,
+            61.38314153667521,
+            228.20613709872703
+          ],
+          [
+            41.52101465404964,
+            44.53484491100642,
+            267.7630482741496
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            -3.720265626467488,
+            7.411551127658499,
+            19.982447474253487
+          ],
+          [
+            -3.983210943753675,
+            -7.573227936020181,
+            16.365016176918004
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          0.58468077547165,
+          -0.31790309440835307,
+          0.7463819487095493
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 64.25413055308803,
+        "nominal_tip_points_world_mm": [
+          [
+            8.93313594478592,
+            70.04343282248989,
+            226.45617464325898
+          ],
+          [
+            49.44645216275741,
+            61.9821165074787,
+            275.67283525148457
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 60.1319658749221
+      },
+      "encoder_model": {
+        "signed_hull_clearance_mm": 52.88644957880409,
+        "nearest_world_mm": [
+          [
+            10.572442384446083,
+            61.310071516195045,
+            228.29463244639334
+          ],
+          [
+            41.51161307441119,
+            44.49634677569856,
+            267.7540156957474
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            -3.72026562646748,
+            7.411551127658496,
+            19.982447474253497
+          ],
+          [
+            -3.9668829463387345,
+            -7.58060229466631,
+            16.328531948415154
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          0.5850113013138426,
+          -0.3179212231942889,
+          0.7461151876069347
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 64.15070242501126,
+        "nominal_tip_points_world_mm": [
+          [
+            8.963481494641163,
+            69.9708151917358,
+            226.5543824985839
+          ],
+          [
+            49.44645216275741,
+            61.9821165074787,
+            275.67283525148457
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 60.02020020506676
+      }
+    },
+    {
+      "timestamp_ns": 1794112657038641653,
+      "finger": "index",
+      "operator_confirmed_pad_contact": false,
+      "contact_observation": "not_confirmed",
+      "command_deg": {
+        "thumb_mcp": -3.9014320373535156,
+        "thumb_abd": 39.95283126831055,
+        "thumb_pip": 28.142051696777344,
+        "thumb_dip": 21.404830932617188,
+        "index_abd": -10.471702575683594,
+        "index_mcp": 39.247596740722656,
+        "index_pip": 49.28356170654297
+      },
+      "encoder_estimated_deg": {
+        "thumb_mcp": -4.209442138671875,
+        "thumb_abd": 40.050315856933594,
+        "thumb_pip": 29.590919494628906,
+        "thumb_dip": 19.458446502685547,
+        "index_abd": -10.564781188964844,
+        "index_mcp": 39.6738395690918,
+        "index_pip": 48.54845428466797
+      },
+      "encoder_is_independent_joint_sensor": false,
+      "command_model": {
+        "signed_hull_clearance_mm": 3.9655442741114815,
+        "nearest_world_mm": [
+          [
+            29.160165521320184,
+            68.46870610966127,
+            242.41689555390258
+          ],
+          [
+            30.36235963195177,
+            67.14729382294071,
+            245.95725433216296
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            -1.7527788398265232,
+            4.733295144244187,
+            28.237400716127123
+          ],
+          [
+            -8.72025885187553,
+            -6.424545783171889,
+            38.099792674876014
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          0.3031599264897752,
+          -0.333223435518601,
+          0.8927800406549729
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 14.032542895440589,
+        "nominal_tip_points_world_mm": [
+          [
+            31.82735801426473,
+            69.92744998545297,
+            237.39707907796338
+          ],
+          [
+            35.51746313648403,
+            63.54833602845167,
+            249.33869912814677
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 11.099294900374153
+      },
+      "encoder_model": {
+        "signed_hull_clearance_mm": 3.504428337009011,
+        "nearest_world_mm": [
+          [
+            29.243943334827282,
+            68.53414381881021,
+            242.79537393068372
+          ],
+          [
+            30.31824640825336,
+            67.4141882862443,
+            245.93744179766784
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            -1.5454589814059698,
+            4.739255378612594,
+            28.394458871691015
+          ],
+          [
+            -8.720258851875515,
+            -6.424545783171883,
+            38.09979267487602
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          0.3065558687791524,
+          -0.3195829461651286,
+          0.8965992637948551
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 13.534492656567432,
+        "nominal_tip_points_world_mm": [
+          [
+            32.09858825331523,
+            69.83300012365525,
+            237.67067327222594
+          ],
+          [
+            35.47760639555962,
+            63.816923323250506,
+            249.3141928344843
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 10.638178963271681
+      }
+    },
+    {
+      "timestamp_ns": 1794112818402872837,
+      "finger": "index",
+      "operator_confirmed_pad_contact": false,
+      "contact_observation": "not_confirmed",
+      "command_deg": {
+        "thumb_mcp": 1.0985679626464844,
+        "thumb_abd": 39.95283126831055,
+        "thumb_pip": 28.142051696777344,
+        "thumb_dip": 21.404830932617188,
+        "index_abd": -10.471702575683594,
+        "index_mcp": 39.247596740722656,
+        "index_pip": 49.28356170654297
+      },
+      "encoder_estimated_deg": {
+        "thumb_mcp": 0.5133628845214844,
+        "thumb_abd": 40.050315856933594,
+        "thumb_pip": 29.590919494628906,
+        "thumb_dip": 19.546916961669922,
+        "index_abd": -10.564781188964844,
+        "index_mcp": 39.6738395690918,
+        "index_pip": 48.640342712402344
+      },
+      "encoder_is_independent_joint_sensor": false,
+      "command_model": {
+        "signed_hull_clearance_mm": 0.6577094022129846,
+        "nearest_world_mm": [
+          [
+            32.48829837577453,
+            66.55068412694914,
+            244.7507056881997
+          ],
+          [
+            32.53946813069248,
+            66.26473768432427,
+            245.34078868735423
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            -1.1488320843018416,
+            5.465574525160877,
+            27.921945069232308
+          ],
+          [
+            -10.495898203082286,
+            -4.9456235568278695,
+            37.3523767349873
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          0.07779994439152832,
+          -0.4347610687375498,
+          0.8971789017597653
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 10.769785156925037,
+        "nominal_tip_points_world_mm": [
+          [
+            36.14370742956414,
+            68.40851426724426,
+            239.74835200727182
+          ],
+          [
+            35.51746313648403,
+            63.54833602845167,
+            249.33869912814677
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 7.791460028475655
+      },
+      "encoder_model": {
+        "signed_hull_clearance_mm": 0.3365671727551566,
+        "nearest_world_mm": [
+          [
+            32.58270242303543,
+            66.6368070747092,
+            244.94762006589087
+          ],
+          [
+            32.61025081277786,
+            66.4927468946872,
+            245.25054780072387
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            -1.1147041619931912,
+            5.36851016160936,
+            28.053808233410287
+          ],
+          [
+            -10.5587826591989,
+            -4.893247369186396,
+            37.32590692013397
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          0.08185108938856162,
+          -0.42802801842713034,
+          0.9000513399841423
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 10.452323666250342,
+        "nominal_tip_points_world_mm": [
+          [
+            36.20550933594211,
+            68.35818886919664,
+            239.88668129250544
+          ],
+          [
+            35.509278467279955,
+            63.80211703278504,
+            249.26796809246184
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 7.4703177990178276
+      }
+    },
+    {
+      "timestamp_ns": 1794113120128559714,
+      "finger": "index",
+      "operator_confirmed_pad_contact": false,
+      "contact_observation": "not_confirmed",
+      "command_deg": {
+        "thumb_mcp": 16.098567962646484,
+        "thumb_abd": 19.952831268310547,
+        "thumb_pip": 28.142051696777344,
+        "thumb_dip": 21.404830932617188,
+        "index_abd": -10.471702575683594,
+        "index_mcp": 39.247596740722656,
+        "index_pip": 49.28356170654297
+      },
+      "encoder_estimated_deg": {
+        "thumb_mcp": 15.400405883789062,
+        "thumb_abd": 19.968555450439453,
+        "thumb_pip": 29.505691528320312,
+        "thumb_dip": 19.635391235351562,
+        "index_abd": -10.564781188964844,
+        "index_mcp": 39.6738395690918,
+        "index_pip": 48.640342712402344
+      },
+      "encoder_is_independent_joint_sensor": false,
+      "command_model": {
+        "signed_hull_clearance_mm": 22.04895452972754,
+        "nearest_world_mm": [
+          [
+            48.029593170143436,
+            76.89843041424832,
+            231.83291355533882
+          ],
+          [
+            36.603463300674235,
+            66.43656028032247,
+            247.5220571062433
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            0.03827878433443367,
+            8.743350791261804,
+            21.46852645916697
+          ],
+          [
+            -11.075223173484305,
+            -0.39830700475788877,
+            37.8907134468252
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          -0.5182164013293196,
+          -0.4744837275536408,
+          0.7115595222327449
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 33.181346921493166,
+        "nominal_tip_points_world_mm": [
+          [
+            57.388318057274745,
+            79.82940663864557,
+            230.42853708907134
+          ],
+          [
+            35.51746313648403,
+            63.54833602845167,
+            249.33869912814677
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 29.18270515599021
+      },
+      "encoder_model": {
+        "signed_hull_clearance_mm": 21.759456629355714,
+        "nearest_world_mm": [
+          [
+            47.79543254717055,
+            76.89098016974646,
+            231.8364029207225
+          ],
+          [
+            36.512197204367055,
+            66.49666874883575,
+            247.26756759124711
+          ]
+        ],
+        "nearest_distal_local_mm": [
+          [
+            0.038278784334450214,
+            8.743350791261795,
+            21.46852645916695
+          ],
+          [
+            -11.188223998850077,
+            -0.5603290485248529,
+            37.67689450617093
+          ]
+        ],
+        "distal_frames": [
+          "right_thumb_dp",
+          "right_index_ip"
+        ],
+        "separation_normal_world": [
+          -0.5185439845764013,
+          -0.4776916812751539,
+          0.7091704969188622
+        ],
+        "desired_pad_contact_verified": false,
+        "nominal_tip_frame_gap_mm": 32.89257901399321,
+        "nominal_tip_points_world_mm": [
+          [
+            57.116659932752206,
+            79.9421701879269,
+            230.43869554818792
+          ],
+          [
+            35.509278467279955,
+            63.80211703278504,
+            249.26796809246184
+          ]
+        ],
+        "unrelated_joints": "configured neutral for FK only; not measured or commanded",
+        "passive_clearance_bias_mm": 2.866249373737329,
+        "configured_closed_target_mm": -7.133750626262671,
+        "configured_target_residual_mm": 28.893207255618385
+      }
+    }
+  ]
+}

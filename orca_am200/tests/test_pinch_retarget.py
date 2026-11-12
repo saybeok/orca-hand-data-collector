@@ -644,14 +644,10 @@ def test_collection_profile_keeps_thumb_flexion_near_contact(bend, gap_cm, expec
     model_bend = np.rad2deg(q[r._thumb_ip_index] + r._thumb_ip_rest_bend)
     assert model_bend == pytest.approx(expected_bend, abs=5)
     if gap_cm == 0:
-        # Contact is calibrated at pad surfaces, not coincident URDF tip
-        # origins. A deeply bent tip can have separated origins while its
-        # pads satisfy the same contact target; check the optimized metric.
-        _positions(r, q)
-        clearance, _ = r._surface_contacts.distances(with_jacobian=False)
-        target = r._surface_contact_targets_cm(
-            r._compute_pinch_vectors(kp), r._compute_pinch_alpha(kp))/100
-        assert abs(clearance[0]-target[0])*1000 < 1
+        # Collection now optimizes the same fingertip proxy for position,
+        # direction and pinch. This is not a measurement of real pad contact.
+        assert r._pinch_objective == 'relative_vector'
+        assert _tip_gap_cm(r, q) * 10 < 1
 
 
 @pytest.mark.parametrize('gain,input_bend', [(1, 40), (2, 53)])

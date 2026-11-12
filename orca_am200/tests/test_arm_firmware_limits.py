@@ -22,6 +22,12 @@ HOME = np.array([2108, 691, 2802])*(-2*np.pi/4096)
 MOTOR_LIMITS = np.sort(RAW_LIMITS*(-2*np.pi/4096), axis=1)
 
 
+@pytest.fixture(autouse=True)
+def assembly_joint_schema(monkeypatch):
+    config = yaml.safe_load(HAND.read_text())
+    monkeypatch.setattr(OrcaJointPositions, '_default_joint_ids', tuple(config['joint_ids']))
+
+
 def arm(signs):
     value = AmArmFeetech.__new__(AmArmFeetech)
     value._motor_home = HOME.copy()

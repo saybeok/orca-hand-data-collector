@@ -54,6 +54,7 @@ learning = [
     # `uv sync --extra learning` is enough for dataset recording/training.
     "orca_teleop[mediapipe,metaquest,adaptive]",
     "lerobot>=0.4,<0.5",
+    "mujoco==3.6.0",
 ]
 
 [tool.uv.sources]

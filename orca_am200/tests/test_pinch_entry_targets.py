@@ -7,7 +7,7 @@ from test_pinch_retarget import (
     AdaptiveAnalyticalRetargeter, HAND_CONFIG, ROOT, URDF, _free_thumb_pose,
 )
 
-PROFILE = ROOT / 'configs/adaptive_analytical_orca_v1_pinch_calibrated.yaml'
+PROFILE = ROOT / 'configs/adaptive_analytical_orca_v1_pinch_surface.yaml'
 
 
 @pytest.fixture

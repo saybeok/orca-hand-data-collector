@@ -1,0 +1,7 @@
+{
+  "task": "move the bottle.",
+  "target": 50,
+  "velocity": 30.0,
+  "acceleration": 90.0,
+  "fold_three_fingers": false
+}

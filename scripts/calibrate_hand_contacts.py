@@ -196,7 +196,7 @@ def main():
     args = p.parse_args()
     outputs = {
         'teach': ('data/contact_calibration/full_hand_taught.json', 'configs/adaptive_analytical_orca_v1_pinch_taught.yaml'),
-        'fit-surface': ('data/contact_calibration/full_hand_surface.json', 'configs/adaptive_analytical_orca_v1_pinch_calibrated.yaml'),
+        'fit-surface': ('data/contact_calibration/full_hand_surface.json', 'configs/adaptive_analytical_orca_v1_pinch_surface.yaml'),
     }
     profile, config = outputs.get(args.mode, ('data/contact_calibration/full_hand_profile.json',
                                              'configs/adaptive_analytical_orca_v1_contact_calibrated.yaml'))

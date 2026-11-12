@@ -146,6 +146,52 @@ def test_conversion_retry_cleans_interrupted_staging_and_rejects_concurrent_job(
     assert not orphan.exists()
 
 
+def test_offline_conversion_retries_full_encoder_queue_without_dropping_frames(tmp_path, monkeypatch):
+    import queue
+    import av
+    from lerobot.datasets.video_utils import StreamingVideoEncoder
+    original = StreamingVideoEncoder.start_episode
+    full_events = []
+
+    def start_episode(encoder, *args, **kwargs):
+        original(encoder, *args, **kwargs)
+        for key, frames in encoder._frame_queues.items():
+            put = frames.put
+            attempts = [0]
+            def delayed_put(item, block=True, timeout=None, *, put=put, attempts=attempts, key=key):
+                if item is not None and attempts[0] < 2:
+                    attempts[0] += 1
+                    full_events.append(key)
+                    raise queue.Full
+                return put(item, block=block, timeout=timeout)
+            frames.put = delayed_put
+    monkeypatch.setattr(StreamingVideoEncoder, 'start_episode', start_episode)
+    capture = make_capture(tmp_path / 'session', cameras=1)
+    for i in range(4):
+        capture.add_frame(frame(capture, i))
+    capture.save_episode()
+    capture.finalize()
+    output = convert_capture(capture.root)
+    assert len(full_events) == 2
+    with av.open(str(next((output / 'videos').rglob('*.mp4')))) as container:
+        frames = list(container.decode(video=0))
+    assert len(frames) == 4
+    np.testing.assert_allclose([f.time for f in frames], np.arange(4) / 30)
+
+
+def test_offline_encoder_backpressure_reports_crashed_worker():
+    from types import SimpleNamespace
+    from orca_teleop.recording_storage import CheckedStreamingEncoder
+    def crashed(*args):
+        raise RuntimeError('Encoder worker crashed: disk error')
+    encoder = SimpleNamespace(_episode_active=True,
+        _threads={'camera': SimpleNamespace(is_alive=lambda: False)}, feed_frame=crashed)
+    checked = CheckedStreamingEncoder(encoder,
+        {'camera': {'dtype': 'video', 'shape': (4, 4, 3)}}, 30, wait_for_encoder=True)
+    with pytest.raises(RuntimeError, match='disk error'):
+        checked.feed_frame('camera', np.zeros((4, 4, 3), np.uint8))
+
+
 def test_recorder_uses_deferred_path_and_checks_save_failure(tmp_path):
     import importlib.util
     import queue

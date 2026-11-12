@@ -1,6 +1,8 @@
 """Strict validation around LeRobot's built-in streaming video encoder."""
 import shutil
 from pathlib import Path
+import queue
+import time
 
 
 class CheckedStreamingEncoder:
@@ -11,7 +13,7 @@ class CheckedStreamingEncoder:
     Completed MP4s are decoded and checked before episode metadata is committed.
     """
 
-    def __init__(self, encoder, features, fps):
+    def __init__(self, encoder, features, fps, *, wait_for_encoder=False):
         self._encoder = encoder
         self._shapes = {key: tuple(ft['shape']) for key, ft in features.items()
                         if ft['dtype'] == 'video'}
@@ -19,6 +21,7 @@ class CheckedStreamingEncoder:
         self._counts = {}
         self._first_images = {}
         self._prepared_results = None
+        self._wait_for_encoder = wait_for_encoder
 
     def start_episode(self, video_keys, temp_dir):
         self.cancel_episode()
@@ -34,11 +37,32 @@ class CheckedStreamingEncoder:
             raise RuntimeError('카메라 영상 수와 관절 데이터 프레임 수가 다릅니다.')
 
     def feed_frame(self, video_key, image):
-        self._encoder.feed_frame(video_key, image)
+        if self._wait_for_encoder:
+            self._feed_frame_waiting(video_key, image)
+        else:
+            self._encoder.feed_frame(video_key, image)
         self.check()
         if self._counts[video_key] == 0:
             self._first_images[video_key] = image.copy()
         self._counts[video_key] += 1
+
+    def _feed_frame_waiting(self, video_key, image):
+        """Offline conversion can pause its producer instead of dropping input."""
+        if not self._encoder._episode_active:
+            raise RuntimeError('No active episode. Call start_episode() first.')
+        payload = image.copy()
+        deadline = time.monotonic() + 120
+        while True:
+            if not self._encoder._threads[video_key].is_alive():
+                # Preserve LeRobot's worker error reporting instead of hiding a crash.
+                self._encoder.feed_frame(video_key, image)
+                raise RuntimeError(f'{video_key}: 영상 인코더가 종료되었습니다.')
+            try:
+                self._encoder._frame_queues[video_key].put(payload, timeout=0.1)
+                return
+            except queue.Full:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f'{video_key}: 영상 인코더가 120초 동안 응답하지 않습니다.')
 
     def prepare_episode(self, expected_frames):
         """Validate before LeRobot writes any rows for the new episode."""

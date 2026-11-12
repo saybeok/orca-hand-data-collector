@@ -19,8 +19,10 @@
 #   ./scripts/teleop_am200_hw.sh --no-arm --source webcam --show-video --no-mirror --camera-id 0
 # Quest pinch retargeting trial, hand only:
 #   ./scripts/teleop_am200_hw.sh --source quest --no-arm --pinch
-# Continuous empirical skin-clearance calibration (hand.sh contacts fit-surface):
+# AKO-inspired relative fingertip objective in adaptive_analytical:
 #   ./scripts/teleop_am200_hw.sh --no-arm --pinch-calibrated --hand-feedback-debug
+# Preceding nearest-skin-clearance objective, explicit comparison only:
+#   ./scripts/teleop_am200_hw.sh --no-arm --retarget-config "$ORCA_HAND_ROOT/configs/adaptive_analytical_orca_v1_pinch_surface.yaml"
 # Recorded physical contact configurations (run hand.sh contacts teach first):
 #   ./scripts/teleop_am200_hw.sh --no-arm --pinch-taught --hand-feedback-debug
 # Reconstructed earlier, abrupt pinch transition (explicit comparison only):
