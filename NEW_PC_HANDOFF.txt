@@ -1,0 +1,76 @@
+ORCA 새 PC 인수인계 — 2026-11-12
+
+목적
+같은 실물 로봇을 다른 Ubuntu PC로 옮겨 기존 제어 설정으로 사용한다.
+Pi0.5 모델·가중치·작성 중인 추론 코드는 이 배포본에서 제외한다.
+이 파일은 긴 대화에서 현재 유효한 설정과 미해결 사항을 추린 요약이다.
+전체 Codex 채팅 기록은 이 압축 파일에 포함하지 않는다.
+
+실물 구성
+- AM-ARM200 팔 3축 + ORCA Hand v1 오른손 Feetech 17축 = 20-DoF.
+- 손 USB: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B79079884-if00
+- 팔 USB: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B79018828-if00
+- 서로 다른 버스이며 두 어댑터의 포트를 바꾸면 안 된다.
+- 팔 ID 순서: shoulder_pan=1, shoulder_lift=2, elbow_flex=3.
+- 팔 방향 부호: [-1, +1, +1]. 좌우 반전을 위해 pan만 바뀐 상태다.
+- 손 ID·ROM: configs/orcahand-right-v1-feetech/config.yaml
+- 손 캘리브레이션: 같은 폴더의 calibration.yaml
+- 손 리타겟팅: adaptive_analytical, 현재 수집용 설정은
+  configs/adaptive_analytical_orca_v1_pinch_calibrated.yaml.
+
+시작 자세와 각도 기준
+- 현재 저장된 시작/복귀 자세: data/arm_home/initial_pose.json.
+- 최초 설치용 동일 자세: configs/am-arm200-3dof/initial_pose.json.
+- 설치기는 이미 있는 runtime 자세를 덮어쓰지 않는다.
+- 같은 로봇을 새 PC에 연결한다는 이유로 다시 영점/캘리를 만들지 않는다.
+- 저장된 팔 모터 라디안:
+  [-3.2336315008629315, -1.059980724428978, -4.2982141676555665]
+- 이 자세에서 정책/IK용 팔 각도는 [0, 0, 0]이다.
+- 팔 모터 목표 = 저장된 모터 기준각 + 방향 부호 * canonical 팔 라디안.
+- 손의 canonical 라디안은 모델 ref를 포함한다. 손 하드웨어로 보낼 때는
+  CanonicalJointMap.hand_to_physical()이 ref를 빼고 도 단위로 바꾼다.
+- canonical 20개를 원시 모터 각도로 바로 보내거나 기준각을 두 번 더하지 않는다.
+
+가동범위 오류 관련 현재 확인 사항
+- 사용자는 새 PC에서 휴식 자세 -> 시작 자세 이동은 되지만 정책 실행 시
+  각도/가동범위 오류가 난다고 보고했다. 정확한 traceback과 새 PC 추론 코드는
+  이 PC에 없어 그 오류의 원인을 최종 확정하지 못했다.
+- 장치 없이 검증한 결과, 저장된 시작점에서 2번 팔 관절의 canonical 상한은
+  0 rad이다. 이 방향으로 +1도 목표를 직접 쓰면 firmware 범위 초과로 거부된다.
+- 원래 텔레옵 IK와 ACT 실행기는 실제 모터 범위를 별도로 적용했지만,
+  공통 hardware sink의 명령 clip은 넓은 시뮬레이션 범위를 사용하던 누락이 있었다.
+- 수정 후 Am200HardwareSink.connect()에서 실제 모터 범위를 읽어 자신의
+  canonical map에 적용한다. dispatch_action() 경로가 그 범위로 목표를 제한한다.
+- 하위 모터 writer를 직접 호출하면 이 처리를 우회한다. 하위 범위 검증은 유지된다.
+- 이 수정이 잘못된 단위·정규화·관절 순서·중복 기준각을 자동 수정하는 것은 아니다.
+- 관련 테스트 78개 통과, 실제 로봇을 움직여 검증한 것은 아니다.
+- 원본 레포 수정: 25c8fe8 / 수집용 레포 수정: 9461d33.
+- 새 PC에서는 오류가 재발한 순간의 traceback 전체와 실행 파일,
+  첫 정책 출력 20개, 실제 모터 범위를 함께 확인한다.
+
+팔 동작과 카메라
+- 수집 팔 명령 속도/가속도 기본값: 30도/초, 90도/초^2.
+- 초기 자세로 가는 경로: 15도/초, 45도/초^2, 도착 오차 허용 5도.
+- 관절 목표 범위 제한은 속도/가속도 제한을 대신하지 않는다.
+- 카메라 역할: bottom, wrist, realsense; RGB 640x480, 30fps.
+- 카메라 포트 설정: configs/cameras.env. 새 PC에서 영상으로 역할을 재확인한다.
+- HD 카메라 두 대는 시리얼이 중복되어 물리 USB 포트로 구분한다.
+- RealSense 시리얼: 261643069030.
+
+설치와 실행
+1. 새 PC의 빈 프로젝트 폴더에 압축을 푼다. 기존 폴더와 무작정 섞지 않는다.
+2. .venv는 옮기지 않는다. uv를 설치하고 ./scripts/install_collector_ubuntu.sh 실행.
+3. 로그아웃/로그인 후 ./scripts/collector_ui.sh 실행.
+4. 카메라 세 역할과 저장 폴더를 새 PC에서 지정한다.
+5. ./scripts/install_collector_ubuntu.sh --check-only 는 장치 없이 설치를 점검한다.
+6. 기존 run_act_hw.sh 는 ACT 전용이다. Pi0.5 실행 파일로 사용하지 않는다.
+
+학습 데이터와 프로젝트
+- 기본 수집 작업 지시: move the bottle.
+- 공개 데이터: https://huggingface.co/datasets/saybeok03/orca-hand-bottle
+- 고정 버전: collection-v2-165, 165개 에피소드 / 141740프레임.
+- 데이터 commit: 36ce9464dc88205f0ee9532ca96646d0eb93c195.
+- observation.state와 action은 동일한 canonical 순서의 20개 라디안이다.
+- 영상, 학습 가중치, 가상환경, 인증 정보는 이 배포본에서 제외한다.
+- 수집용 GitHub: https://github.com/saybeok/orca-hand-data-collector
+- 원본 작업 GitHub: https://github.com/saybeok/orca-hand

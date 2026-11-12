@@ -10,8 +10,12 @@ paths=(.gitignore env.sh README.md scripts configs orca_core orca_teleop orca_am
 if [[ -f "$task_root/data/arm_home/initial_pose.json" ]]; then
   paths+=(data/arm_home/initial_pose.json)
 fi
+if [[ -f "$task_root/NEW_PC_HANDOFF.txt" ]]; then
+  paths+=(NEW_PC_HANDOFF.txt)
+fi
 tar -czf "$archive" -C "$task_root" \
   --exclude='.git' --exclude='.git.upstream' --exclude='.venv' --exclude='__pycache__' \
   --exclude='.pytest_cache' --exclude='.ruff_cache' --exclude='*.egg-info' \
+  --exclude='configs/pi05_bottle' --exclude='*/pi05_inference.py' \
   "${paths[@]}"
 echo "$archive"
