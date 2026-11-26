@@ -12,6 +12,22 @@ A demonstration collection system for a 20-DoF manipulation platform combining t
 
 The dataset was used by our team to train ACT and fine-tune π0.5 for bottle manipulation.
 
+## Demo
+
+### Quest 3 teleoperation
+
+[![Meta Quest 3 hand-tracking teleoperation of the AM-ARM200 and ORCA Hand](docs/images/quest-teleoperation.gif)](docs/videos/quest-teleoperation.mp4)
+
+[Watch the MP4 video](docs/videos/quest-teleoperation.mp4)
+
+### Bottle demonstration collection
+
+![AM-ARM200 and ORCA Hand collecting a bottle-manipulation demonstration with the three-camera recording interface](docs/images/bottle-collection.jpg)
+
+### ORCA Hand hardware
+
+<img src="docs/images/orca-hand.jpg" alt="Close-up of the tendon-driven ORCA Hand mounted on the AM-ARM200 arm" width="360">
+
 The original installation and operating instructions (in Korean) follow below.
 
 ---
