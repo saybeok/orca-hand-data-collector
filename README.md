@@ -1,5 +1,22 @@
 # ORCA Hand Data Collector
 
+## Research overview
+
+A demonstration collection system for a 20-DoF manipulation platform combining the AM-ARM200 robotic arm and the open-source, tendon-driven ORCA Hand. Developed as part of an undergraduate research project at Ajou University.
+
+- Meta Quest 3 hand tracking, arm inverse kinematics, and AKO-based finger retargeting.
+- Foot-pedal controls for recording, saving, and retrying demonstrations, with a gesture-based arm clutch and automatic return to the initial pose.
+- Three RGB camera views and 20-dimensional robot states and actions recorded for imitation learning.
+
+**Dataset:** [orca-hand-bottle on Hugging Face](https://huggingface.co/datasets/saybeok03/orca-hand-bottle) — 165 demonstrations.
+
+The dataset was used by our team to train ACT and fine-tune π0.5 for bottle manipulation.
+
+The original installation and operating instructions (in Korean) follow below.
+
+---
+
+
 **Quest로 AM 팔 + ORCA 손을 텔레오퍼레이션하고, 버튼으로 LeRobot 시연 데이터를 수집하는 Ubuntu 앱입니다.**
 
 현재 구성은 **AM-ARM200 팔 3축 + ORCA Hand v1 오른손 Feetech 17축 = 20-DoF**, 카메라는 **바닥·손목·리얼센스 RGB 3대**입니다. 새 설치의 기본 작업 지시는 **`move the bottle.`**입니다. 수집한 165개 시연은 [Hugging Face](https://huggingface.co/datasets/saybeok03/orca-hand-bottle)에 공개돼 있고, 학습용 고정 버전은 `collection-v2-165`입니다.
